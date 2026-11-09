@@ -1,0 +1,116 @@
+{% from "fields.html" import field %}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/">All scripts</a><span aria-hidden="true">/</span><span>{{ title }}</span></nav>
+<section class="page-head">
+  <h1>{{ title }}</h1>
+  {% if description %}<p class="lede">{{ description }}</p>{% endif %}
+</section>
+{% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+
+{% if has_params %}
+<form class="params card" method="get" action="/scripts/{{ name }}" data-run-form>
+  <input type="hidden" name="_run" value="1">
+  <div class="fields">
+    {% for f in fields %}{{ field(f) }}{% endfor %}
+  </div>
+  <div class="actions">
+    <button type="submit">Run <kbd>Ctrl</kbd>+<kbd>Enter</kbd></button>
+    <button type="button" class="secondary" data-reset>Reset to defaults</button>
+    <a class="button ghost" href="/">All scripts</a>
+  </div>
+</form>
+{% endif %}
+
+<div class="share-bar">
+  <a class="button secondary small" href="{{ share_href }}" data-share-link title="Copy a link to this page with these parameters">Share link</a>
+</div>
+<div class="share-output" data-share-output hidden>
+  <label for="share-url">Link to this page with these parameters</label>
+  <div class="share-row">
+    <input id="share-url" type="text" readonly data-share-url>
+    <span class="share-note" role="status" data-share-note></span>
+  </div>
+</div>
+
+<section id="results" class="results" aria-live="polite">
+{% if run %}
+  <div class="run-summary">
+    <p class="meta">{{ run.meta }}{% if run.notice %} · <span class="badge warn">{{ run.notice }}</span>{% endif %}</p>
+  </div>
+
+  {% if run.charts %}
+  <div class="charts">
+    {% for c in run.charts %}
+    <section class="card chart-card">
+      {% if c.error %}
+      <p class="alert" role="alert">Chart unavailable: {{ c.error }}</p>
+      {% else %}
+      <h2 class="chart-title">{{ c.title }}</h2>
+      <div class="chart"><canvas data-chart="chart-data-{{ c.index }}" role="img" aria-label="{{ c.title }}"></canvas></div>
+      <noscript><p class="help">Enable JavaScript to see this chart.</p></noscript>
+      <p class="chart-fallback" data-chart-fallback hidden>The chart library could not be loaded. The data is in the table below.</p>
+      <script type="application/json" id="chart-data-{{ c.index }}">{{ c.json|safe }}</script>
+      {% endif %}
+    </section>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if run.show_table %}
+    {% if run.empty %}
+    <p class="empty">The query returned no rows.</p>
+    {% else %}
+    <div class="table-tools">
+      <label class="visually-hidden" for="table-filter">Filter rows</label>
+      <input id="table-filter" class="search" type="search" placeholder="Filter rows…" autocomplete="off" data-table-filter>
+      <span class="count" data-table-count aria-live="polite">{{ run.rows|length }} rows</span>
+      <button type="button" class="secondary small" data-export-csv title="Exports the rows shown on this page">Export page as CSV</button>
+      {% if run.pager %}
+      <form class="page-size" method="get" action="/scripts/{{ name }}" data-page-size-form>
+        {% for field in run.pager.hidden_fields %}<input type="hidden" name="{{ field.name }}" value="{{ field.value }}">{% endfor %}
+        <input type="hidden" name="_run" value="1">
+        <input type="hidden" name="_page" value="1">
+        <label for="page-size">Rows per page</label>
+        <select id="page-size" name="_size" data-auto-submit>
+          {% for option in run.pager.size_options %}<option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.value }}</option>{% endfor %}
+        </select>
+        <noscript><button type="submit" class="secondary small">Apply</button></noscript>
+      </form>
+      {% endif %}
+    </div>
+    <div class="table-wrap">
+      <table class="data" data-sortable>
+        <thead><tr>
+          {% for c in run.columns %}<th scope="col" tabindex="0" aria-sort="none">{{ c }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+          {% for row in run.rows %}
+          <tr>{% for cell in row %}{% if cell.numeric %}<td class="num">{{ cell.text }}</td>{% else %}<td>{{ cell.text }}</td>{% endif %}{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="no-match" data-table-empty hidden>No rows match the filter.</p>
+    </div>
+    {% if run.pager and run.pager.pages > 1 %}
+    <nav class="pager" aria-label="Pagination">
+      <p class="pager-summary">Page {{ run.pager.current }} of {{ run.pager.pages }}</p>
+      <ol class="pager-bar">
+        <li>
+          {% if run.pager.prev %}<a class="pager-arrow" rel="prev" href="{{ run.pager.prev }}" aria-label="Previous page">&#8249;</a>
+          {% else %}<span class="pager-arrow" aria-disabled="true" aria-label="No previous page">&#8249;</span>{% endif %}
+        </li>
+        {% for link in run.pager.links %}
+          {% if link.number is none %}<li class="pager-far"><span class="pager-gap" aria-hidden="true">&#8230;</span></li>
+          {% elif link.current %}<li><span class="pager-page current" aria-current="page">{{ link.number }}</span></li>
+          {% else %}<li{% if link.far %} class="pager-far"{% endif %}><a class="pager-page" href="{{ link.href }}" aria-label="Page {{ link.number }}">{{ link.number }}</a></li>{% endif %}
+        {% endfor %}
+        <li>
+          {% if run.pager.next %}<a class="pager-arrow" rel="next" href="{{ run.pager.next }}" aria-label="Next page">&#8250;</a>
+          {% else %}<span class="pager-arrow" aria-disabled="true" aria-label="No next page">&#8250;</span>{% endif %}
+        </li>
+      </ol>
+    </nav>
+    {% endif %}
+    {% endif %}
+  {% endif %}
+{% endif %}
+</section>

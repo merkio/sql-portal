@@ -1,0 +1,29 @@
+# Local playground: the portal (demo config) plus Prometheus scraping /metrics.
+#   docker compose up --build
+#   portal:      http://localhost:8080
+#   prometheus:  http://localhost:9090
+services:
+  portal:
+    build: .
+    image: script-portal:local
+    ports:
+      - "8080:8080"
+    environment:
+      RUST_LOG: info
+      # Use your own configuration instead of the demo one:
+      # SCRIPT_PORTAL_CONFIG: /config/config.yaml
+      # DATABASE_URL: postgres://user:pass@db/app
+      # LDAP_BIND_PASSWORD: change-me
+      # OIDC_CLIENT_SECRET: change-me
+    # volumes:
+    #   - ./my-config:/config:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - portal

@@ -1,0 +1,134 @@
+# Script Portal configuration reference.
+#
+# * Every string value may use ${ENV_VAR} or ${ENV_VAR:-default}. Booleans and
+#   numbers may come from the environment too, e.g. `enabled: ${AUTH_ENABLED:-true}`.
+#   SQL text (`sql:` values) is never expanded.
+# * Quote values that contain ':' (e.g. "sqlite::memory:").
+# * Relative file paths are resolved against the directory of this file.
+
+# Shared certificates for every TLS connection (database, LDAP, OIDC). Mount a
+# Kubernetes kubernetes.io/tls secret and the CA, then point these at the files:
+# tls:
+#   ca_file: /etc/portal-tls/ca.crt
+#   cert_file: /etc/portal-tls/tls.crt   # optional client certificate (mutual TLS)
+#   key_file: /etc/portal-tls/tls.key
+#   insecure: false
+
+server:
+  bind: "${SCRIPT_PORTAL_BIND:-0.0.0.0:8080}"
+  # Externally visible URL; the OIDC redirect URI is <public_url>/auth/callback.
+  public_url: "${PUBLIC_URL:-http://localhost:8080}"
+  session:
+    cookie_name: sp_session
+    secure: ${COOKIE_SECURE:-false}   # set to true when served over HTTPS
+    ttl_minutes: 60
+
+ui:
+  title: "Script Portal"
+  # Point at a self-hosted copy (e.g. "/static/chart.js" behind a proxy) to avoid the CDN.
+  chartjs_url: "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+
+observability:
+  log_level: "info"          # tracing env-filter; RUST_LOG overrides it
+  log_format: text           # text | json
+  metrics_enabled: true
+  metrics_path: /metrics
+
+database:
+  url: "${DATABASE_URL}"     # sqlite://file.db?mode=ro  or  postgres://user:pass@host/db
+  max_connections: 5
+  acquire_timeout_secs: 5
+  read_only_scripts: true    # only a single SELECT/WITH statement is accepted
+  # init_sql_files: ["schema.sql"]   # optional, executed once at startup
+  # migrations:                      # off by default; set enabled: true to apply *.sql in name order
+  #   enabled: false
+  #   dir: migrations/sqlite
+  # tls: {...}                       # optional: replaces the shared top-level tls block
+
+# GitHub sign-in (auth.github, with organisations and teams as groups): see
+# config/config.github.example.yaml and the README section "GitHub sign-in".
+
+# ---------------------------------------------------------------------------
+# Authentication. `enabled: false` switches off ALL authorizers: every request
+# is then served as an anonymous administrator (use only on trusted networks).
+# ---------------------------------------------------------------------------
+auth:
+  enabled: ${AUTH_ENABLED:-true}
+
+  ldap:
+    enabled: true
+    url: "${LDAP_URL:-ldap://ldap.example.org:389}"   # ldaps:// is supported too
+    start_tls: false
+    bind_dn: "${LDAP_BIND_DN:-cn=svc-portal,ou=services,dc=example,dc=org}"
+    bind_password: "${LDAP_BIND_PASSWORD}"
+    base_dn: "ou=people,dc=example,dc=org"
+    user_filter: "(&(objectClass=person)(uid={username}))"   # {username} is escaped
+    username_attribute: uid
+    display_name_attribute: cn
+    email_attribute: mail
+    group_attribute: memberOf          # leave empty if the server has no memberOf
+    # Use a group search when memberOf is unavailable (e.g. plain OpenLDAP):
+    # group_search:
+    #   base_dn: "ou=groups,dc=example,dc=org"
+    #   filter: "(&(objectClass=groupOfNames)(member={user_dn}))"
+    #   name_attribute: cn
+    timeout_secs: 5
+
+  oidc:
+    enabled: true
+    issuer_url: "${OIDC_ISSUER_URL:-https://idp.example.org/realms/main}"
+    client_id: "${OIDC_CLIENT_ID:-script-portal}"
+    client_secret: "${OIDC_CLIENT_SECRET}"
+    scopes: [profile, email]           # "openid" is always requested
+    username_claim: preferred_username
+    groups_claim: groups
+
+# ---------------------------------------------------------------------------
+# Authorization: users/groups -> roles -> permissions. Wildcards: "*" grants
+# everything, "prefix.*" grants every permission starting with "prefix.".
+# Group keys may be an LDAP group CN, the full group DN, or an OIDC group name
+# (matching is case-insensitive).
+# ---------------------------------------------------------------------------
+access:
+  default_roles: []                    # granted to every authenticated user
+  roles:
+    admin: ["*"]
+    analyst: ["scripts.sales.*"]
+    viewer: ["scripts.public.read"]
+  group_roles:
+    analysts: [analyst]
+    "cn=admins,ou=groups,dc=example,dc=org": [admin]
+  # external:                       # optional: load roles and permissions from a service (see README)
+  #   url: "https://permissions.internal/v1/permissions"
+  #   cache_ttl_secs: 300
+  user_roles:
+    alice: [admin]
+
+# ---------------------------------------------------------------------------
+# Scripts. Each becomes a page at /scripts/<name> with a generated form.
+# `:name` placeholders in the SQL are bound (never interpolated) from `params`.
+# ---------------------------------------------------------------------------
+scripts:
+  - name: sales_by_region
+    title: Sales by region
+    group: Sales                 # optional: section of the script list; ungrouped scripts come last
+    description: Revenue per region for a date range.
+    permissions: [scripts.sales.read]  # caller needs ALL listed permissions
+    max_rows: 1000        # charts are drawn from at most this many rows
+    page_size: 25         # rows per page of the table (1..500)
+    timeout_secs: 30
+    sql: |
+      SELECT region, SUM(amount) AS total
+      FROM sales
+      WHERE sold_on BETWEEN :from_date AND :to_date
+      GROUP BY region
+      ORDER BY total DESC
+    # sql_file: scripts/sales_by_region.sql     # alternative to inline `sql`
+    params:
+      # type: text | integer | number | boolean | date | select
+      - { name: from_date, label: From, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: To, type: date, required: true }
+    charts:
+      # type: line | bar | pie | doughnut | scatter ; x = label column, y = value columns
+      - { title: Revenue by region, type: bar, x: region, y: [total] }
+    table: true

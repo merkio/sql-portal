@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Minimum line coverage (percent) enforced on pull requests.
+  COVERAGE_MIN: "70"
+
+jobs:
+  fmt:
+    name: Format (rustfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Lint (clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Unit and integration tests
+        run: cargo test --all-features --locked
+      - name: Validate shipped configuration files
+        run: |
+          cargo run --locked -- --config config/config.demo.yaml check-config
+          DATABASE_URL="sqlite::memory:" LDAP_BIND_PASSWORD=x OIDC_CLIENT_SECRET=y \
+            cargo run --locked -- --config config/config.example.yaml check-config
+
+  coverage:
+    name: Test coverage
+    runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Collect coverage
+        run: |
+          cargo llvm-cov --all-features --locked \
+            --ignore-filename-regex '(src/main\.rs|src/testing\.rs)' \
+            --lcov --output-path lcov.info \
+            --fail-under-lines "$COVERAGE_MIN"
+      - name: Coverage summary
+        if: always()
+        run: |
+          {
+            echo '### Test coverage'
+            echo '```'
+            cargo llvm-cov report --summary-only \
+              --ignore-filename-regex '(src/main\.rs|src/testing\.rs)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: lcov.info
+      - name: Upload to Codecov (optional)
+        if: ${{ always() && env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+          fail_ci_if_error: false
+
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: script-portal:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test (health, readiness, metrics)
+        run: |
+          docker run -d --name portal -p 8080:8080 script-portal:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/readyz && break
+            sleep 1
+          done
+          curl -fsS http://localhost:8080/healthz
+          curl -fsS http://localhost:8080/metrics | grep -q '^http_requests_total'
+          curl -fsS http://localhost:8080/ | grep -q 'Available scripts'
+          # The built-in HEALTHCHECK must report healthy.
+          for i in $(seq 1 20); do
+            status=$(docker inspect --format '{{.State.Health.Status}}' portal)
+            [ "$status" = "healthy" ] && break
+            sleep 2
+          done
+          test "$status" = "healthy"
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs portal
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisories should be visible but not block unrelated PRs
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,31 @@
+<div class="login-wrap">
+  <div class="card login">
+    <h1>Sign in</h1>
+    {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+    {% if not ldap and not oidc and not github %}
+    <p class="lede">No sign-in method is configured.</p>
+    {% endif %}
+    {% if ldap %}
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" type="text" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit">Sign in with directory account</button>
+    </form>
+    {% endif %}
+    {% if (ldap or oidc) and github %}<div class="divider"><span>or</span></div>{% endif %}
+    {% if ldap and oidc %}<div class="divider"><span>or</span></div>{% endif %}
+    {% if oidc %}
+    <a class="button secondary wide" href="/login/oidc">Sign in with single sign-on</a>
+    {% endif %}
+    {% if github %}
+    <a class="button secondary wide" href="/login/github">Sign in with GitHub</a>
+    {% endif %}
+  </div>
+</div>

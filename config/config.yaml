@@ -1,0 +1,608 @@
+# Script Portal configuration reference.
+#
+# * Every string value may use ${ENV_VAR} or ${ENV_VAR:-default}. Booleans and
+#   numbers may come from the environment too, e.g. `enabled: ${AUTH_ENABLED:-true}`.
+#   SQL text (`sql:` values) is never expanded.
+# * Quote values that contain ':' (e.g. "sqlite::memory:").
+# * Relative file paths are resolved against the directory of this file.
+
+server:
+  bind: "${SCRIPT_PORTAL_BIND:-0.0.0.0:8080}"
+  # Externally visible URL; the OIDC redirect URI is <public_url>/auth/callback.
+  public_url: "${PUBLIC_URL:-http://localhost:8080}"
+  session:
+    cookie_name: sp_session
+    secure: ${COOKIE_SECURE:-false}   # set to true when served over HTTPS
+    ttl_minutes: 60
+
+ui:
+  title: "Script Portal"
+  # Point at a self-hosted copy (e.g. "/static/chart.js" behind a proxy) to avoid the CDN.
+  chartjs_url: "https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+
+observability:
+  log_level: "info"          # tracing env-filter; RUST_LOG overrides it
+  log_format: text           # text | json
+  metrics_enabled: true
+  metrics_path: /metrics
+
+database:
+  url: "sqlite::memory:"     # sqlite://file.db?mode=ro  or  postgres://user:pass@host/db
+  max_connections: 5
+  acquire_timeout_secs: 5
+  read_only_scripts: true    # only a single SELECT/WITH statement is accepted
+  # init_sql_files: ["schema.sql"]   # optional, executed once at startup (file must exist)
+  migrations:
+    enabled: true
+    dir: migrations/sqlite
+# ---------------------------------------------------------------------------
+# Authentication. `enabled: false` switches off ALL authorizers: every request
+# is then served as an anonymous administrator (use only on trusted networks).
+# ---------------------------------------------------------------------------
+auth:
+  enabled: ${AUTH_ENABLED:-false}
+
+  ldap:
+    enabled: true
+    url: "${LDAP_URL:-ldap://ldap.example.org:389}"   # ldaps:// is supported too
+    start_tls: false
+    bind_dn: "${LDAP_BIND_DN:-cn=svc-portal,ou=services,dc=example,dc=org}"
+    bind_password: "${LDAP_BIND_PASSWORD:-}"
+    base_dn: "ou=people,dc=example,dc=org"
+    user_filter: "(&(objectClass=person)(uid={username}))"   # {username} is escaped
+    username_attribute: uid
+    display_name_attribute: cn
+    email_attribute: mail
+    group_attribute: memberOf          # leave empty if the server has no memberOf
+    # Use a group search when memberOf is unavailable (e.g. plain OpenLDAP):
+    # group_search:
+    #   base_dn: "ou=groups,dc=example,dc=org"
+    #   filter: "(&(objectClass=groupOfNames)(member={user_dn}))"
+    #   name_attribute: cn
+    timeout_secs: 5
+
+  oidc:
+    enabled: true
+    issuer_url: "${OIDC_ISSUER_URL:-https://idp.example.org/realms/main}"
+    client_id: "${OIDC_CLIENT_ID:-script-portal}"
+    client_secret: "${OIDC_CLIENT_SECRET:-}"
+    scopes: [profile, email]           # "openid" is always requested
+    username_claim: preferred_username
+    groups_claim: groups
+
+# ---------------------------------------------------------------------------
+# Authorization: users/groups -> roles -> permissions. Wildcards: "*" grants
+# everything, "prefix.*" grants every permission starting with "prefix.".
+# Group keys may be an LDAP group CN, the full group DN, or an OIDC group name
+# (matching is case-insensitive).
+# ---------------------------------------------------------------------------
+access:
+  default_roles: []                    # granted to every authenticated user
+  roles:
+    admin: ["*"]
+    analyst: ["scripts.sales.*"]
+    viewer: ["scripts.public.read"]
+  group_roles:
+    analysts: [analyst]
+    "cn=admins,ou=groups,dc=example,dc=org": [admin]
+  user_roles:
+    alice: [admin]
+
+# ---------------------------------------------------------------------------
+# Scripts. Each becomes a page at /scripts/<name> with a generated form.
+# `:name` placeholders in the SQL are bound (never interpolated) from `params`.
+# ---------------------------------------------------------------------------
+scripts:
+  - name: sales_by_region
+    title: Sales by region
+    group: Sales
+    description: Revenue and order count per region for a date range.
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT region,
+             COUNT(*)              AS orders,
+             ROUND(SUM(amount), 2) AS total
+      FROM sales
+      WHERE sold_on BETWEEN :from_date AND :to_date
+        AND amount >= COALESCE(:min_amount, 0)
+      GROUP BY region
+      ORDER BY total DESC
+    params:
+      - { name: from_date, label: From, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-30" }
+      - { name: min_amount, label: Minimum order amount, type: number, min: 0, help: "Leave empty to include all orders." }
+    charts:
+      - { title: Revenue by region, type: bar, x: region, y: [total] }
+      - { title: Share of revenue, type: doughnut, x: region, y: [total] }
+
+  - name: monthly_trend
+    title: Monthly trend
+    group: Sales
+    description: Orders and revenue per month.
+    permissions: [scripts.sales.read]
+    sql_file: scripts/monthly_trend.sql
+    charts:
+      - { title: Revenue per month, type: line, x: month, y: [revenue] }
+      - { title: Orders per month, type: bar, x: month, y: [orders] }
+
+  - name: top_products
+    title: Top products
+    group: Sales
+    description: Best selling products, optionally for a single region.
+    permissions: [scripts.sales.read]
+    max_rows: 50
+    timeout_secs: 10
+    sql: |
+      SELECT product,
+             SUM(quantity)         AS units,
+             ROUND(SUM(amount), 2) AS revenue
+      FROM sales
+      WHERE (:region = '' OR region = :region)
+        AND (:include_apac = 1 OR region <> 'APAC')
+      GROUP BY product
+      ORDER BY revenue DESC
+      LIMIT :limit
+    params:
+      - name: region
+        label: Region
+        type: select
+        default: ""
+        options: [{ value: "", label: All regions }, EU, US, APAC]
+      - { name: limit, label: How many, type: integer, min: 1, max: 20, default: 5 }
+      - { name: include_apac, label: Include APAC, type: boolean, default: true }
+    charts:
+      - { title: Revenue by product, type: pie, x: product, y: [revenue] }
+
+  - name: find_sales
+    title: Find sales
+    group: Sales
+    description: Search sales by product or region text, with a minimum quantity and a date window.
+    permissions: [scripts.sales.read]
+    max_rows: 100
+    sql: |
+      SELECT id, region, product, sold_on, quantity, amount
+      FROM sales
+      WHERE (:q = '' OR product LIKE '%' || :q || '%' OR region LIKE '%' || :q || '%')
+        AND quantity >= :min_quantity
+        AND sold_on BETWEEN :from_date AND :to_date
+      ORDER BY sold_on DESC, id DESC
+    params:
+      - { name: q, label: Search, type: text, default: "", help: "Matches product or region, ignoring case." }
+      - { name: min_quantity, label: Minimum quantity, type: integer, min: 0, default: 0 }
+      - { name: from_date, label: From, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-30" }
+
+  - name: order_sizes
+    title: Order sizes (admin)
+    group: Sales
+    description: Quantity versus amount for one region. Requires the admin role.
+    permissions: [scripts.admin.read]
+    sql: |
+      SELECT quantity, amount FROM sales WHERE region = :region ORDER BY id LIMIT 200
+    params:
+      - name: region
+        type: select
+        required: true
+        default: EU
+        options: [EU, US, APAC]
+    charts:
+      - { title: Quantity vs amount, type: scatter, x: quantity, y: [amount] }
+    table: false
+
+  # ------------------------------------------------------------------------
+  # Showcase: one script per way of presenting selected data. Open the page
+  # and compare. Data comes from migrations 0003 and 0004 (see migrations/sqlite).
+  # ------------------------------------------------------------------------
+
+  - name: showcase_table
+    title: "Showcase 1 · table only"
+    group: Showcase
+    description: "Default presentation: a sortable, filterable table and no charts."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT month, orders, revenue, returns FROM showcase_monthly ORDER BY month
+
+  - name: showcase_bar
+    title: "Showcase 2 · bar chart, two series"
+    group: Showcase
+    description: "Categories on the x axis, two series on one chart, with the table underneath."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT region, COUNT(*) AS orders, ROUND(SUM(amount), 2) AS total
+      FROM sales GROUP BY region ORDER BY region
+    charts:
+      - { title: Orders and revenue by region, type: bar, x: region, y: [orders, total] }
+
+  - name: showcase_line
+    title: "Showcase 3 · line chart with gaps"
+    group: Showcase
+    description: "Monthly series. NULL values (May and June 2023) break the line instead of dropping to zero."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT month, orders, returns FROM showcase_monthly ORDER BY month
+    charts:
+      - { title: Orders and returns per month, type: line, x: month, y: [orders, returns] }
+
+  - name: showcase_pie
+    title: "Showcase 4 · pie chart"
+    group: Showcase
+    description: "Share of units per category. Garden has zero units and therefore no slice."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT category, units FROM showcase_categories ORDER BY units DESC
+    charts:
+      - { title: Units by category, type: pie, x: category, y: [units] }
+
+  - name: showcase_doughnut
+    title: "Showcase 5 · doughnut chart, table hidden"
+    group: Showcase
+    description: "The same data as a doughnut, with the table switched off in the configuration."
+    permissions: [scripts.sales.read]
+    table: false
+    sql: |
+      SELECT category, units FROM showcase_categories ORDER BY units DESC
+    charts:
+      - { title: Units by category (doughnut), type: doughnut, x: category, y: [units] }
+
+  - name: showcase_scatter
+    title: "Showcase 6 · scatter plot, table hidden"
+    group: Showcase
+    description: "Numeric x and y values per point. Advertising spend against sales."
+    permissions: [scripts.sales.read]
+    table: false
+    sql: |
+      SELECT advertising, sales FROM showcase_points ORDER BY id
+    charts:
+      - { title: Sales against advertising spend, type: scatter, x: advertising, y: [sales] }
+
+  - name: showcase_mixed
+    title: "Showcase 7 · several charts and a table"
+    group: Showcase
+    description: "Three charts of different kinds over one grouped result: a bar, a pie and a doughnut, with the table underneath."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT region, COUNT(*) AS orders, ROUND(SUM(amount), 2) AS total
+      FROM sales GROUP BY region ORDER BY region
+    charts:
+      - { title: Orders and revenue by region, type: bar, x: region, y: [orders, total] }
+      - { title: Revenue share, type: pie, x: region, y: [total] }
+      - { title: Order share, type: doughnut, x: region, y: [orders] }
+
+  - name: showcase_truncated
+    title: "Showcase 8 · paged result, charts capped"
+    group: Showcase
+    description: "5000 generated rows, 50 per page. The table pages through all of them; the chart uses the first 200 rows (max_rows)."
+    permissions: [scripts.sales.read]
+    max_rows: 200
+    page_size: 50
+    sql: |
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+      SELECT i AS n, (i * 37) % 101 AS value FROM n
+    charts:
+      - { title: First 200 values, type: line, x: n, y: [value] }
+
+  - name: showcase_empty
+    title: "Showcase 9 · no rows"
+    group: Showcase
+    description: "A query that matches nothing. The charts are empty and the table says so."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT month, orders FROM showcase_monthly WHERE orders > 1000
+    charts:
+      - { title: Orders above 1000, type: bar, x: month, y: [orders] }
+
+  - name: showcase_chart_error
+    title: "Showcase 10 · chart error next to a valid chart"
+    group: Showcase
+    description: "The first chart refers to a column that does not exist. Its error replaces it; the second still draws."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT category, units FROM showcase_categories ORDER BY category
+    charts:
+      - { title: Broken chart, type: bar, x: category, y: [missing_column] }
+      - { title: Units by category, type: bar, x: category, y: [units] }
+
+  - name: showcase_params
+    title: "Showcase 11 · every parameter kind"
+    group: Showcase
+    description: "Text, integer, number, boolean, date and select inputs, with defaults, limits, help text and validation."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT id, label, city, quantity, price, active
+      FROM showcase_items
+      WHERE (:q = '' OR label LIKE '%' || :q || '%' OR city LIKE '%' || :q || '%')
+        AND quantity >= :min_quantity
+        AND (:min_price IS NULL OR price >= :min_price)
+        AND (:active_only = 0 OR active = 1)
+        AND added_on BETWEEN :from_date AND :to_date
+        AND (:status = 'any' OR (:status = 'with_note' AND note IS NOT NULL) OR (:status = 'without_note' AND note IS NULL))
+      ORDER BY id
+    params:
+      - { name: q, label: Search, type: text, default: "", max_length: 40, help: "Matches label or city." }
+      - { name: min_quantity, label: Minimum quantity, type: integer, min: 0, max: 1000, default: 0 }
+      - { name: min_price, label: Minimum price, type: number, min: 0, help: "Leave empty to ignore prices." }
+      - { name: active_only, label: Only active items, type: boolean, default: true }
+      - { name: from_date, label: Added from, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: Added to, type: date, required: true, default: "2024-12-31" }
+      - name: status
+        label: Notes
+        type: select
+        required: true
+        default: any
+        options: [{ value: any, label: Any }, { value: with_note, label: With a note }, { value: without_note, label: Without a note }]
+
+  - name: showcase_column_types
+    title: "Showcase 12 · column types in a table"
+    group: Showcase
+    description: "NULLs, booleans as 0/1, decimals, dates, long text, markup-looking text and non-ASCII text."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT id, label, note, active, price, quantity, added_on, city, markup, description
+      FROM showcase_items ORDER BY id
+
+  - name: showcase_wide_table
+    title: "Showcase 13 · wide table"
+    group: Showcase
+    description: "Twelve columns. The table scrolls sideways and keeps its header in place."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT id, segment,
+             ROUND(advertising, 2) AS advertising,
+             ROUND(sales, 2) AS sales,
+             ROUND(sales / advertising, 3) AS ratio,
+             ROUND(sales - advertising, 2) AS margin,
+             advertising * 12 AS yearly_spend,
+             sales * 12 AS yearly_sales,
+             CASE WHEN sales > advertising * 2 THEN 'strong' ELSE 'weak' END AS verdict,
+             id % 2 = 0 AS even,
+             UPPER(segment) AS segment_code,
+             printf('%.1f%%', 100.0 * sales / (sales + advertising)) AS share
+      FROM showcase_points ORDER BY id LIMIT 30
+
+  # ------------------------------------------------------------------------
+  # Filters combined with charts, paging, and a large result.
+  # ------------------------------------------------------------------------
+
+  - name: showcase_filter_bar_pie
+    title: "Showcase 14 · filters with a bar and a pie"
+    group: Showcase
+    description: "Region, product, a date window and a minimum amount narrow the sales. The same filtered rows feed a bar and a pie."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT product, COUNT(*) AS orders, ROUND(SUM(amount), 2) AS total
+      FROM sales
+      WHERE (:region = 'ALL' OR region = :region)
+        AND sold_on BETWEEN :from_date AND :to_date
+        AND amount >= COALESCE(:min_amount, 0)
+      GROUP BY product
+      ORDER BY total DESC
+    params:
+      - { name: region, label: Region, type: select, required: true, default: ALL, options: [{ value: ALL, label: All regions }, EU, US, APAC] }
+      - { name: from_date, label: From, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-30" }
+      - { name: min_amount, label: Minimum amount, type: number, min: 0, help: "Leave empty to include every order." }
+    charts:
+      - { title: Revenue by product, type: bar, x: product, y: [total] }
+      - { title: Orders by product, type: pie, x: product, y: [orders] }
+
+  - name: showcase_filter_monthly_line
+    title: "Showcase 15 · time series with filters"
+    group: Showcase
+    description: "Monthly revenue for one region within a date window. Months with no sales do not appear, so the line has no zero points."
+    permissions: [scripts.sales.read]
+    page_size: 12
+    sql: |
+      SELECT strftime('%Y-%m', sold_on) AS month,
+             COUNT(*) AS orders,
+             ROUND(SUM(amount), 2) AS total
+      FROM sales
+      WHERE (:region = 'ALL' OR region = :region)
+        AND sold_on BETWEEN :from_date AND :to_date
+      GROUP BY month
+      ORDER BY month
+    params:
+      - { name: region, label: Region, type: select, required: true, default: ALL, options: [{ value: ALL, label: All regions }, EU, US, APAC] }
+      - { name: from_date, label: From, type: date, required: true, default: "2024-01-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-30" }
+    charts:
+      - { title: Revenue per month, type: line, x: month, y: [total] }
+
+  - name: showcase_top_n_switch
+    title: "Showcase 16 · top N with a switch"
+    group: Showcase
+    description: "Integer limit and a boolean switch decide which products appear. Bar and doughnut show the same top N."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT product, ROUND(SUM(amount), 2) AS total, SUM(quantity) AS units
+      FROM sales
+      WHERE (:include_apac = 1 OR region <> 'APAC')
+      GROUP BY product
+      ORDER BY total DESC
+      LIMIT :limit
+    params:
+      - { name: limit, label: How many products, type: integer, required: true, min: 1, max: 4, default: 3 }
+      - { name: include_apac, label: Include APAC, type: boolean, default: true }
+    charts:
+      - { title: Top products by revenue, type: bar, x: product, y: [total] }
+      - { title: Share of units, type: doughnut, x: product, y: [units] }
+
+  - name: showcase_scatter_filters
+    title: "Showcase 17 · scatter with filters"
+    group: Showcase
+    description: "A segment and a minimum advertising spend narrow the points. The table is paged at ten rows."
+    permissions: [scripts.sales.read]
+    page_size: 10
+    sql: |
+      SELECT id, segment, advertising, sales
+      FROM showcase_points
+      WHERE (:segment = 'ALL' OR segment = :segment)
+        AND advertising >= COALESCE(:min_advertising, 0)
+      ORDER BY id
+    params:
+      - { name: segment, label: Segment, type: select, required: true, default: ALL, options: [{ value: ALL, label: All segments }, consumer, business, partner] }
+      - { name: min_advertising, label: Minimum advertising, type: number, min: 0, max: 100 }
+    charts:
+      - { title: Sales against advertising, type: scatter, x: advertising, y: [sales] }
+
+  - name: showcase_search_paged
+    title: "Showcase 18 · search with paging"
+    group: Showcase
+    description: "Free-text search over the sales, ten rows per page, no charts."
+    permissions: [scripts.sales.read]
+    page_size: 10
+    sql: |
+      SELECT id, region, product, sold_on, quantity, amount
+      FROM sales
+      WHERE (:q = '' OR product LIKE '%' || :q || '%' OR region LIKE '%' || :q || '%')
+      ORDER BY sold_on, id
+    params:
+      - { name: q, label: Search, type: text, default: "", help: "Matches product or region, ignoring case." }
+
+  - name: showcase_big_table
+    title: "Showcase 19 · 20,000 rows, 100 per page"
+    group: Showcase
+    description: "A generated result far larger than a page. Only the requested page is fetched; the total comes from a count."
+    permissions: [scripts.sales.read]
+    page_size: 100
+    sql: |
+      WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20000)
+      SELECT i AS row_number,
+             (i * 37) % 101 AS value,
+             printf('item-%05d', i) AS code
+      FROM n
+
+  # ------------------------------------------------------------------------
+  # Gallery: several chart kinds per script, over the tables of migrations 0005
+  # and 0006. Every script filters its data, so the charts change with the form.
+  # ------------------------------------------------------------------------
+
+  - name: gallery_all_types
+    title: "Gallery 1 · all five chart kinds"
+    group: Charts gallery
+    description: "One grouped result drawn as a line, a bar, a pie, a doughnut and a scatter plot."
+    permissions: [scripts.sales.read]
+    max_rows: 100
+    sql: |
+      SELECT product_line,
+             SUM(units) AS units,
+             ROUND(SUM(revenue), 2) AS revenue
+      FROM quarterly_sales
+      WHERE (:year = 'ALL' OR substr(quarter, 1, 4) = :year)
+      GROUP BY product_line
+      ORDER BY product_line
+    params:
+      - { name: year, label: Year, type: select, required: true, default: ALL, options: [{ value: ALL, label: 2023 and 2024 }, { value: "2023", label: 2023 }, { value: "2024", label: 2024 }] }
+    charts:
+      - { title: Revenue by product line (line), type: line, x: product_line, y: [revenue] }
+      - { title: Units and revenue (bar), type: bar, x: product_line, y: [units, revenue] }
+      - { title: Revenue share (pie), type: pie, x: product_line, y: [revenue] }
+      - { title: Units share (doughnut), type: doughnut, x: product_line, y: [units] }
+      - { title: Units against revenue (scatter), type: scatter, x: units, y: [revenue] }
+
+  - name: gallery_quarterly_bars
+    title: "Gallery 2 · quarterly revenue, bars and lines"
+    group: Charts gallery
+    description: "Revenue per quarter for each product line. Bars compare the lines; a line shows the two premium lines over time."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT quarter,
+             ROUND(SUM(CASE WHEN product_line = 'Core' THEN revenue END), 2) AS core,
+             ROUND(SUM(CASE WHEN product_line = 'Plus' THEN revenue END), 2) AS plus,
+             ROUND(SUM(CASE WHEN product_line = 'Pro' THEN revenue END), 2) AS pro,
+             ROUND(SUM(CASE WHEN product_line = 'Enterprise' THEN revenue END), 2) AS enterprise
+      FROM quarterly_sales
+      WHERE (:year = 'ALL' OR substr(quarter, 1, 4) = :year)
+      GROUP BY quarter
+      ORDER BY quarter
+    params:
+      - { name: year, label: Year, type: select, required: true, default: ALL, options: [{ value: ALL, label: 2023 and 2024 }, { value: "2023", label: 2023 }, { value: "2024", label: 2024 }] }
+    charts:
+      - { title: Revenue per quarter by line, type: bar, x: quarter, y: [core, plus, pro, enterprise] }
+      - { title: Premium lines over time, type: line, x: quarter, y: [pro, enterprise] }
+
+  - name: gallery_brand_share
+    title: "Gallery 3 · brand share, pie and doughnut"
+    group: Charts gallery
+    description: "Share and units by brand. A text search and a minimum share narrow the brands."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT brand, share, units
+      FROM brand_share
+      WHERE brand LIKE '%' || :q || '%'
+        AND share >= COALESCE(:min_share, 0)
+      ORDER BY share DESC
+    params:
+      - { name: q, label: Brand contains, type: text, default: "", help: "Case-insensitive part of the brand name." }
+      - { name: min_share, label: Minimum share (%), type: number, min: 0, max: 100, help: "Leave empty to show every brand." }
+    charts:
+      - { title: Share of the market, type: pie, x: brand, y: [share] }
+      - { title: Units per brand, type: doughnut, x: brand, y: [units] }
+
+  - name: gallery_sensor_readings
+    title: "Gallery 4 · sensor readings, line and scatter, paged"
+    group: Charts gallery
+    description: "Hourly temperature and humidity for one location in a date window. The table pages through every reading; the charts use the first 500."
+    permissions: [scripts.sales.read]
+    page_size: 24
+    max_rows: 500
+    sql: |
+      SELECT ts, temperature, humidity
+      FROM sensor_readings
+      WHERE location = :location
+        AND substr(ts, 1, 10) BETWEEN :from_date AND :to_date
+      ORDER BY ts
+    params:
+      - { name: location, label: Location, type: select, required: true, default: Warehouse, options: [Warehouse, Office] }
+      - { name: from_date, label: From, type: date, required: true, default: "2024-06-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-14" }
+    charts:
+      - { title: Temperature and humidity over time, type: line, x: ts, y: [temperature, humidity] }
+      - { title: Humidity against temperature, type: scatter, x: temperature, y: [humidity] }
+
+  - name: gallery_survey_bands
+    title: "Gallery 5 · survey by age band, bar, line and doughnut"
+    group: Charts gallery
+    description: "Responses grouped by age band. The bar compares satisfaction, the line the spend, the doughnut the number of responses."
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT CASE WHEN age < 30 THEN '18-29'
+                  WHEN age < 45 THEN '30-44'
+                  WHEN age < 60 THEN '45-59'
+                  ELSE '60+' END AS age_band,
+             COUNT(*) AS responses,
+             ROUND(AVG(satisfaction), 2) AS avg_satisfaction,
+             ROUND(AVG(spend), 2) AS avg_spend
+      FROM survey_responses
+      WHERE (:segment = 'ALL' OR segment = :segment)
+        AND age >= :min_age
+      GROUP BY age_band
+      ORDER BY age_band
+    params:
+      - { name: segment, label: Segment, type: select, required: true, default: ALL, options: [{ value: ALL, label: All segments }, consumer, business, partner] }
+      - { name: min_age, label: Minimum age, type: integer, required: true, min: 18, max: 80, default: 18 }
+    charts:
+      - { title: Average satisfaction (bar), type: bar, x: age_band, y: [avg_satisfaction] }
+      - { title: Average spend (line), type: line, x: age_band, y: [avg_spend] }
+      - { title: Responses (doughnut), type: doughnut, x: age_band, y: [responses] }
+
+  - name: gallery_web_traffic
+    title: "Gallery 6 · daily traffic, lines and bars, paged"
+    group: Charts gallery
+    description: "Visits per channel per day. Switch off weekends or set a minimum number of visits to see the effect on both charts."
+    permissions: [scripts.sales.read]
+    page_size: 14
+    sql: |
+      SELECT day, direct, search, social
+      FROM web_traffic
+      WHERE day BETWEEN :from_date AND :to_date
+        AND (direct + search + social) >= :min_visits
+        AND (:weekdays_only = 0 OR strftime('%w', day) NOT IN ('0', '6'))
+      ORDER BY day
+    params:
+      - { name: from_date, label: From, type: date, required: true, default: "2024-05-01" }
+      - { name: to_date, label: To, type: date, required: true, default: "2024-06-28" }
+      - { name: min_visits, label: Minimum total visits, type: integer, min: 0, default: 0 }
+      - { name: weekdays_only, label: Weekdays only, type: boolean, default: false }
+    charts:
+      - { title: Visits per channel (line), type: line, x: day, y: [direct, search, social] }
+      - { title: Search and social visits (bar), type: bar, x: day, y: [search, social] }

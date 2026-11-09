@@ -1,0 +1,55 @@
+# Script portal with GitHub sign-in. Setup instructions: README, "GitHub sign-in".
+#
+#   export GITHUB_CLIENT_ID=...          # from your GitHub OAuth app
+#   export GITHUB_CLIENT_SECRET=...      # from the same app; keep it out of files
+#   SCRIPT_PORTAL_CONFIG=config/config.github.example.yaml cargo run
+
+server:
+  bind: "0.0.0.0:8080"
+  # Must match the host of the callback URL registered in the GitHub OAuth app:
+  # <public_url>/login/github/callback
+  public_url: "${PUBLIC_URL:-http://localhost:8080}"
+  session:
+    cookie_name: sp_session
+    secure: ${COOKIE_SECURE:-false}     # true when served over HTTPS
+    ttl_minutes: 60
+
+database:
+  url: "sqlite::memory:"                # demo data; use postgres:// for real data
+  max_connections: 1
+  migrations:
+    enabled: true
+    dir: migrations/sqlite
+
+auth:
+  enabled: true
+  github:
+    client_id: "${GITHUB_CLIENT_ID}"
+    client_secret: "${GITHUB_CLIENT_SECRET}"
+    # Only members of these organisations may sign in. Remove the line to allow any GitHub account.
+    allowed_orgs: ["acme"]
+    # GitHub Enterprise Server only:
+    # web_url: "https://github.example.com"
+    # api_url: "https://github.example.com/api/v3"
+
+access:
+  default_roles: []
+  roles:
+    admin: ["*"]
+    analyst: ["scripts.sales.*"]
+  # Keys are organisations ("acme") or teams ("acme/data-admins"); case-insensitive.
+  group_roles:
+    "acme": [analyst]                   # every member of the organisation
+    "acme/data-admins": [admin]         # members of one team
+  user_roles: {}
+
+scripts:
+  - name: sales_by_region
+    title: Sales by region
+    group: Sales
+    permissions: [scripts.sales.read]
+    sql: |
+      SELECT region, COUNT(*) AS orders, ROUND(SUM(amount), 2) AS total
+      FROM sales GROUP BY region ORDER BY region
+    charts:
+      - { title: Revenue by region, type: bar, x: region, y: [total] }
