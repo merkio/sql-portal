@@ -1,0 +1,12 @@
+[package]
+name = "config-loader"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
+thiserror = "2"
+anyhow = "1"

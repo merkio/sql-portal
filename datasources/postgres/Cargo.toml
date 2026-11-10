@@ -1,0 +1,10 @@
+[package]
+name = "postgres-dialect"
+version = "0.1.0"
+edition = "2021"
+description = "PostgreSQL dialect for sql-dialect: casts for typed parameters and result wrapping"
+license = "MIT"
+publish = false
+
+[dependencies]
+sql-executor = { path = "../sql-executor" }

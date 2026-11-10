@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = [
+    "domain",
+    "application",
+    "adapters",
+    "ui",
+    "deployment",
+    "testing",
+    "integration-tests",
+]

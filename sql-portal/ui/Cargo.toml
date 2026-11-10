@@ -1,0 +1,28 @@
+[package]
+name = "sql-portal-ui"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[dependencies]
+sql-portal-domain = { path = "../domain" }
+sql-portal-application = { path = "../application" }
+metrics = "0.24"
+axum = "0.8"
+tokio = { version = "1", features = ["sync"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id", "set-header"] }
+tower-sessions = "0.14"
+tracing = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+http-body-util = "0.1"
+minijinja = "2"
+regex = "1"
+url = "2"
+
+[dev-dependencies]
+sql-portal-testing = { path = "../testing" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

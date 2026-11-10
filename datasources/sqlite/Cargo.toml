@@ -1,0 +1,10 @@
+[package]
+name = "sqlite-dialect"
+version = "0.1.0"
+edition = "2021"
+description = "SQLite dialect for sql-dialect: positional '?' binds"
+license = "MIT"
+publish = false
+
+[dependencies]
+sql-executor = { path = "../sql-executor" }

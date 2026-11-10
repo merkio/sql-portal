@@ -1,0 +1,10 @@
+[package]
+name = "sql-executor"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+description = "Database-independent SQL dialect contract: placeholders, cells and statements"
+license = "MIT"
+publish = false
+
+[dependencies]

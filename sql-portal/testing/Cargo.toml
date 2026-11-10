@@ -1,0 +1,12 @@
+[package]
+name = "sql-portal-testing"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+description = "In-memory fakes of the domain ports, for tests only"
+publish = false
+
+[dependencies]
+sql-portal-domain = { path = "../domain" }
+async-trait = "0.1"
+tokio = { version = "1", features = ["time"] }
