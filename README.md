@@ -32,15 +32,18 @@ One Cargo workspace (root `Cargo.toml`) in three groups:
 common/          shared libraries, independent of the portal
   config-loader/     (placeholder, not used yet)
   template-render/   (placeholder, not used yet)
+  prometheus/        Prometheus recorder setup and rendering (prometheus-metrics)
+  tls/               TLS options for rustls and reqwest clients (tls-config)
 datasources/     SQL dialects, no I/O
   sql-executor/      the dialect contract (Dialect trait, Cell, Statement)
   sqlite/ postgres/ clickhouse/   one dialect each, built on sql-executor
 sql-portal/      the application
   domain/            model and ports, no web/database/identity-provider crates
-  application/       use cases: auth/, scripts/, health/
-  adapters/          port implementations: sql/, auth/, grants/, health/, config/, telemetry/, tls/
-  ui/                axum routes, views, extractors, middleware
-  deployment/        composition root (one module per configured part) + main.rs
+  application/       use cases: auth/, scripts/
+  adapters/          port implementations: sql/, auth/, grants/, config/
+  api/               everything axum: routes, handlers, views, middleware, server loop
+  deployment/        composition root (one module per configured part, incl. health/ and
+                     observability/) + main.rs
   testing/           in-memory fakes of the ports (dev-dependency only)
   integration-tests/ in-process, database and Docker-image tests
 ```
@@ -364,7 +367,7 @@ Logs use `tracing` (`log_format: json` for log shippers); every request gets an 
   Set `ui.chartjs_url` to a self-hosted file (e.g. `/static/chart.js` via your proxy) to avoid the CDN.
 - **Not included** (put these in front, or extend): login rate limiting/lockout, TLS termination, a persistent/shared session store.
   Sessions are held **in memory**: they are lost on restart and not shared between replicas — run one replica or use sticky sessions,
-  or swap `MemoryStore` in `sql-portal/ui/src/router.rs` for a persistent `tower-sessions` store.
+  or swap `MemoryStore` in `sql-portal/api/src/router.rs` for a persistent `tower-sessions` store.
 - Metrics and health endpoints are unauthenticated; restrict them at the network level if needed.
 
 ## Development

@@ -134,7 +134,7 @@ fn adapters_implement_domain_ports_over_the_datasources() {
 }
 
 #[test]
-fn ui_depends_on_use_cases_not_on_adapters() {
+fn api_depends_on_use_cases_not_on_adapters() {
     assert_internal_deps_within(
         "sql-portal-api",
         &["sql-portal-domain", "sql-portal-application"],
@@ -167,6 +167,53 @@ fn deployment_is_the_only_crate_that_wires_every_layer() {
 }
 
 #[test]
+fn only_deployment_and_tests_use_the_api() {
+    let graph = dependency_graph();
+    let dependents: Vec<_> = graph
+        .iter()
+        .filter(|(name, deps)| {
+            deps.contains("sql-portal-api")
+                && !["sql-portal", "sql-portal-integration-tests"].contains(&name.as_str())
+        })
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        dependents.is_empty(),
+        "only deployment and tests may depend on the api, found {dependents:?}"
+    );
+}
+
+#[test]
+fn only_the_api_knows_the_web_framework() {
+    let graph = dependency_graph();
+    let web = ["axum", "tower", "tower-http", "tower-sessions"];
+    let offenders: Vec<_> = graph
+        .iter()
+        .filter(|(name, _)| {
+            !["sql-portal-api", "sql-portal-integration-tests"].contains(&name.as_str())
+        })
+        .filter_map(|(name, deps)| {
+            let found: Vec<_> = deps.iter().filter(|d| web.contains(&d.as_str())).collect();
+            (!found.is_empty()).then(|| format!("{name}: {found:?}"))
+        })
+        .collect();
+    assert!(
+        offenders.is_empty(),
+        "web framework outside sql-portal-api: {offenders:?}"
+    );
+}
+
+#[test]
+fn health_checks_live_in_deployment() {
+    let root = Path::new(REPO_ROOT).join("sql-portal");
+    for layer in ["domain", "application", "adapters"] {
+        let dir = root.join(layer).join("src/health");
+        assert!(!dir.exists(), "{} must not exist", dir.display());
+    }
+    assert!(root.join("deployment/src/health").is_dir());
+}
+
+#[test]
 fn test_fakes_are_never_a_production_dependency() {
     let graph = dependency_graph();
     let dependents: Vec<_> = graph
@@ -191,7 +238,7 @@ fn datasources_build_on_the_sql_executor_only() {
 }
 
 #[test]
-fn common_crates_do_not_know_the_portal() {
+fn common_crates_do_not_know_the_portal_or_the_datasources() {
     for name in [
         "config-loader",
         "template-render",
