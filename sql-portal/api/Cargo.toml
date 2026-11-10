@@ -14,7 +14,7 @@ metrics = "0.24"
 axum = "0.8"
 tokio = { version = "1", features = ["sync", "net"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "request-id", "set-header"] }
+tower-http = { version = "0.7", features = ["trace", "request-id", "set-header"] }
 tower-sessions = "0.14"
 tracing = "0.1"
 serde = { version = "1", features = ["derive"] }
