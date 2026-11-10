@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use sql_portal_adapters::sql::connect_database;
-use sql_portal_adapters::tls::TlsOptions;
+use tls_config::TlsOptions;
 
 fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("set {name} to run the TLS tests"))

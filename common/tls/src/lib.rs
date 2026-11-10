@@ -7,12 +7,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::CryptoProvider;
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
-use rustls::{ClientConfig, DigitallySignedStruct, RootCertStore, SignatureScheme};
+pub use rustls::ClientConfig;
+use rustls::{DigitallySignedStruct, RootCertStore, SignatureScheme};
 
 /// Resolved TLS settings for one connection.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -59,6 +60,7 @@ impl TlsOptions {
 }
 
 /// Applies the options to a reqwest client (ClickHouse, OIDC).
+#[cfg(feature = "reqwest")]
 pub fn apply_reqwest(
     mut builder: reqwest::ClientBuilder,
     tls: &TlsOptions,
@@ -83,7 +85,7 @@ pub fn apply_reqwest(
         );
         builder = builder.identity(
             reqwest::Identity::from_pem(&pem)
-                .map_err(|e| anyhow!("invalid client identity: {e}"))?,
+                .map_err(|e| anyhow::anyhow!("invalid client identity: {e}"))?,
         );
     }
     if tls.insecure {

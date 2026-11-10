@@ -3547,7 +3547,6 @@ dependencies = [
  "postgres-dialect",
  "regex",
  "reqwest 0.12.28",
- "rustls",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -3557,6 +3556,7 @@ dependencies = [
  "sqlite-dialect",
  "sqlx",
  "thiserror 2.0.21",
+ "tls-config",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -3608,6 +3608,7 @@ dependencies = [
  "sql-portal-domain",
  "sql-portal-testing",
  "testcontainers-modules",
+ "tls-config",
  "tokio",
  "tower",
  "url",
@@ -4091,6 +4092,15 @@ name = "tinyvec"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+
+[[package]]
+name = "tls-config"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest 0.12.28",
+ "rustls",
+]
 
 [[package]]
 name = "tokio"

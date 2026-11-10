@@ -9,12 +9,12 @@ use super::model::*;
 use super::runtime::{
     AuthRuntime, Connection, DatabaseRuntime, ExternalGrants, GrantsRuntime, RuntimeConfig,
 };
-use crate::tls::TlsOptions;
 use sql_portal_domain::scripts::sql_template::is_read_only_select;
 use sql_portal_domain::{
     AccessPolicy, ChartDefinition, ChartKind, ParamDefinition, ParamKind, Permission,
     ScriptDefinition, ScriptName, SelectOption,
 };
+use tls_config::TlsOptions;
 
 fn invalid(msg: impl Into<String>) -> ConfigError {
     ConfigError::Invalid(msg.into())

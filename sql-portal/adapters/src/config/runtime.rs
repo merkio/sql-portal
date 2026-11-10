@@ -8,8 +8,8 @@ use std::time::Duration;
 use super::model::{
     GithubConfig, LdapConfig, ObservabilityConfig, OidcConfig, ServerConfig, UiConfig,
 };
-use crate::tls::TlsOptions;
 use sql_portal_domain::{AccessPolicy, ScriptDefinition};
+use tls_config::TlsOptions;
 
 pub struct RuntimeConfig {
     pub server: ServerConfig,

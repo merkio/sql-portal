@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sql_portal_adapters::sql::connect_database;
-use sql_portal_adapters::tls::TlsOptions;
 use sql_portal_domain::{QueryError, QueryExecutor, QueryRequest, QueryResult, Value};
 use sql_portal_integration_tests::containers::{Lease, POSTGRES};
+use tls_config::TlsOptions;
 
 /// A connection to the shared server. Holding it keeps the container alive.
 struct Pg {

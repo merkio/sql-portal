@@ -7,9 +7,9 @@ use async_trait::async_trait;
 use reqwest::{redirect, Client, StatusCode};
 use serde::{Deserialize, Serialize};
 
-use crate::tls::{apply_reqwest, TlsOptions};
 use sql_portal_domain::GrantSource;
 use sql_portal_domain::{AuthError, Grants, PermissionSet, User};
+use tls_config::{apply_reqwest, TlsOptions};
 
 /// Loads roles and permissions from `POST {url}`. Uses the same TLS settings as
 /// the other connections: a CA, a client identity for mutual TLS, or `insecure`.

@@ -11,9 +11,9 @@ use reqwest::{Client, Url};
 use sql_executor::Dialect;
 
 use super::{cells_of, table_result, TlsOptions};
-use crate::tls::apply_reqwest;
 use sql_portal_domain::QueryExecutor;
 use sql_portal_domain::{QueryError, QueryRequest, QueryResult};
+use tls_config::apply_reqwest;
 
 /// Runs script SQL against a ClickHouse server.
 pub struct ClickHouseExecutor {

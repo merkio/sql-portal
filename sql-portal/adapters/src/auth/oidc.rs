@@ -1,6 +1,5 @@
 //! OpenID Connect relying-party adapter (authorization code flow + PKCE).
 
-use crate::tls::{apply_reqwest, TlsOptions};
 use async_trait::async_trait;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -11,6 +10,7 @@ use openidconnect::{
     RedirectUrl, Scope, TokenResponse,
 };
 use serde_json::Value as Json;
+use tls_config::{apply_reqwest, TlsOptions};
 use tokio::sync::OnceCell;
 
 use crate::config::model::OidcConfig;

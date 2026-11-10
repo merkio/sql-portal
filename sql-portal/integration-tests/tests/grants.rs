@@ -10,10 +10,10 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 use sql_portal_adapters::grants::{CachedGrants, RemoteGrants};
-use sql_portal_adapters::tls::TlsOptions;
 use sql_portal_domain::access::identity::{Grants, User};
 use sql_portal_domain::GrantSource;
 use sql_portal_domain::{AuthProvider, Permission};
+use tls_config::TlsOptions;
 
 const TOKEN: &str = "s3cret";
 

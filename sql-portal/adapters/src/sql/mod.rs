@@ -65,7 +65,7 @@ pub(crate) fn table_result(table: Table, max_rows: usize) -> sql_portal_domain::
     }
 }
 
-pub use crate::tls::TlsOptions;
+pub use tls_config::TlsOptions;
 
 /// Picks the adapter from the URL scheme: `clickhouse://` and
 /// `clickhouses://` use the ClickHouse HTTP interface, `postgres://` and

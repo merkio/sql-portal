@@ -4,6 +4,7 @@ members = [
     # Common utilities
     "common/template-render",
     "common/config-loader",
+    "common/tls",
     
     # Datasources
     "datasources/sql-executor",

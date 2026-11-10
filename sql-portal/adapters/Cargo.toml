@@ -11,6 +11,7 @@ sql-executor = { path = "../../datasources/sql-executor" }
 sqlite-dialect = { path = "../../datasources/sqlite" }
 postgres-dialect = { path = "../../datasources/postgres" }
 clickhouse-dialect = { path = "../../datasources/clickhouse" }
+tls-config = { path = "../../common/tls", features = ["reqwest"] }
 anyhow = "1"
 async-trait = "0.1"
 ldap3 = { version = "0.12", default-features = false, features = ["tls-rustls-ring"] }
@@ -31,7 +32,6 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.22"
 url = "2"
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 percent-encoding = "2"
 futures-util = "0.3"
 

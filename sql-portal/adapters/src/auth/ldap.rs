@@ -7,13 +7,13 @@ use async_trait::async_trait;
 use ldap3::{ldap_escape, Ldap, LdapConnAsync, LdapConnSettings, Scope, SearchEntry};
 
 use crate::config::model::LdapConfig;
-use crate::tls::{rustls_client_config, TlsOptions};
 use sql_portal_domain::CredentialAuthenticator;
 use sql_portal_domain::{AuthError, AuthProvider, User};
+use tls_config::{rustls_client_config, ClientConfig, TlsOptions};
 
 pub struct LdapAuthenticator {
     cfg: LdapConfig,
-    tls: Option<std::sync::Arc<rustls::ClientConfig>>,
+    tls: Option<std::sync::Arc<ClientConfig>>,
 }
 
 impl LdapAuthenticator {

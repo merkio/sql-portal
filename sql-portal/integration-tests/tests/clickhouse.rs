@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sql_portal_adapters::sql::connect_database;
-use sql_portal_adapters::tls::TlsOptions;
 use sql_portal_domain::{QueryError, QueryExecutor, QueryRequest, Value};
 use sql_portal_integration_tests::containers::{unique_name, Lease, CLICKHOUSE};
+use tls_config::TlsOptions;
 
 /// An executor bound to a fresh database. Holding it keeps the container alive.
 struct Ch {

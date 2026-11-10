@@ -7,12 +7,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sql_portal_adapters::sql::{connect_database, prepare_database};
-use sql_portal_adapters::tls::TlsOptions;
 use sql_portal_domain::access::identity::{AuthProvider, User};
 use sql_portal_domain::scripts::repository::ConfigScriptCatalog;
 use sql_portal_domain::scripts::ScriptDefinition;
 use sql_portal_domain::telemetry::NoopTelemetry;
 use sql_portal_domain::{AccessPolicy, LocalGrants, Permission, QueryRequest, ScriptName};
+use tls_config::TlsOptions;
 
 #[cfg(test)]
 mod sqlite_tests {

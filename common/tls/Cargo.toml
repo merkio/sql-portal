@@ -1,0 +1,17 @@
+[package]
+name = "tls-config"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[features]
+default = []
+# `apply_reqwest`: TLS options for a reqwest client.
+reqwest = ["dep:reqwest"]
+
+[dependencies]
+anyhow = "1"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"], optional = true }
+
