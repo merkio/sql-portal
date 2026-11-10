@@ -6,6 +6,6 @@ rust-version = "1.89"
 publish = false
 
 [dependencies]
-minijinja = "2"
+minijinja = "3"
 serde = "1"
 thiserror = "2"
