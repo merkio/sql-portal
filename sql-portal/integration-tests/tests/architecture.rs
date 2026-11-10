@@ -137,7 +137,11 @@ fn adapters_implement_domain_ports_over_the_datasources() {
 fn api_depends_on_use_cases_not_on_adapters() {
     assert_internal_deps_within(
         "sql-portal-api",
-        &["sql-portal-domain", "sql-portal-application"],
+        &[
+            "sql-portal-domain",
+            "sql-portal-application",
+            "template-render",
+        ],
     );
 }
 

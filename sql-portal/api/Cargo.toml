@@ -8,6 +8,7 @@ publish = false
 [dependencies]
 sql-portal-domain = { path = "../domain" }
 sql-portal-application = { path = "../application" }
+template-render = { path = "../../common/template-render" }
 async-trait = "0.1"
 metrics = "0.24"
 axum = "0.8"
@@ -20,7 +21,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 http-body-util = "0.1"
-minijinja = "2"
 regex = "1"
 url = "2"
 

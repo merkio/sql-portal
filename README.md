@@ -31,7 +31,7 @@ One Cargo workspace (root `Cargo.toml`) in three groups:
 ```
 common/          shared libraries, independent of the portal
   config-loader/     (placeholder, not used yet)
-  template-render/   (placeholder, not used yet)
+  template-render/   compiled minijinja template sets, content versions
   prometheus/        Prometheus recorder setup and rendering (prometheus-metrics)
   tls/               TLS options for rustls and reqwest clients (tls-config)
 datasources/     SQL dialects, no I/O

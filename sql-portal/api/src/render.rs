@@ -4,8 +4,8 @@
 
 use std::sync::OnceLock;
 
-use minijinja::Environment;
 use serde::Serialize;
+use template_render::{content_version, Templates};
 
 const TEMPLATES: &[(&str, &str)] = &[
     ("layout.html", include_str!("templates/layout.html")),
@@ -21,42 +21,31 @@ const TEMPLATES: &[(&str, &str)] = &[
 pub fn asset_version() -> &'static str {
     static VERSION: OnceLock<String> = OnceLock::new();
     VERSION.get_or_init(|| {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        include_str!("assets/app.css").hash(&mut hasher);
-        include_str!("assets/app.js").hash(&mut hasher);
-        format!("{:x}", hasher.finish())
+        content_version(&[
+            include_str!("assets/app.css"),
+            include_str!("assets/app.js"),
+        ])
     })
 }
 
-fn env() -> &'static Environment<'static> {
-    static ENV: OnceLock<Environment<'static>> = OnceLock::new();
-    ENV.get_or_init(|| {
-        let mut env = Environment::new();
-        for (name, source) in TEMPLATES {
-            env.add_template(name, source)
-                .unwrap_or_else(|e| panic!("bundled template {name} is invalid: {e}"));
-        }
-        env
-    })
+fn templates() -> &'static Templates {
+    static TEMPLATES_SET: OnceLock<Templates> = OnceLock::new();
+    TEMPLATES_SET.get_or_init(|| Templates::new(TEMPLATES).unwrap_or_else(|e| panic!("{e}")))
 }
 
 /// Renders a bundled template. A failing render is logged and answered with a
 /// generic message rather than leaking template details to the browser.
 pub fn render<S: Serialize>(name: &str, context: S) -> String {
-    env()
-        .get_template(name)
-        .and_then(|t| t.render(context))
-        .unwrap_or_else(|e| {
-            tracing::error!(template = name, error = %e, "template render failed");
-            "<p class=\"alert\" role=\"alert\">The page could not be shown.</p>".to_string()
-        })
+    templates().render(name, context).unwrap_or_else(|e| {
+        tracing::error!(template = name, error = %e, "template render failed");
+        "<p class=\"alert\" role=\"alert\">The page could not be shown.</p>".to_string()
+    })
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn every_bundled_template_compiles() {
-        super::env();
+        super::templates();
     }
 }

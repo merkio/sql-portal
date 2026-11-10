@@ -9,9 +9,9 @@ rule must first be added to a `Cargo.toml`, and `sql-portal/integration-tests/te
 ```
 common/                       datasources/                   sql-portal/
   config-loader   (empty)       sql-executor  ◄──┐             domain ──────────► sql-executor
-  template-render (empty)       sqlite-dialect ──┤             application ─────► domain
+  template-render               sqlite-dialect ──┤             application ─────► domain
   prometheus-metrics            postgres-dialect ┤             adapters ────────► domain, sql-executor, *-dialect, tls-config
-  tls-config                    clickhouse-dialect┘            api ─────────────► application, domain
+  tls-config                    clickhouse-dialect┘            api ─────────────► application, domain, template-render
                                                                deployment ──────► all of the above, prometheus-metrics
                                                                testing (dev) ───► domain
                                                                integration-tests ► everything (tests only)
@@ -22,7 +22,7 @@ common/                       datasources/                   sql-portal/
 | `sql-portal-domain` | model and ports; no web, database or identity-provider crates | `sql-executor` (placeholder scanning) |
 | `sql-portal-application` | use cases | `domain` |
 | `sql-portal-adapters` | port implementations | `domain`, the datasource crates, `tls-config` |
-| `sql-portal-api` | the only crate that knows axum/tower: routes, handlers, extractors, middleware, views, `serve`; the `Readiness` port | `domain`, `application` |
+| `sql-portal-api` | the only crate that knows axum/tower: routes, handlers, extractors, middleware, views, `serve`; the `Readiness` port | `domain`, `application`, `template-render` |
 | `sql-portal` (deployment) | composition root + `script-portal` binary; health checks and observability; no axum | all layers, `prometheus-metrics` |
 | `sql-portal-testing` | in-memory fakes of the ports | `domain`; only as a dev-dependency |
 | `sql-portal-integration-tests` | integration and end-to-end tests | everything |
@@ -30,7 +30,8 @@ common/                       datasources/                   sql-portal/
 | `sqlite-` / `postgres-` / `clickhouse-dialect` | one dialect each, no I/O | `sql-executor` |
 | `prometheus-metrics` | Prometheus recorder with caller-supplied buckets, install, render | — |
 | `tls-config` | `TlsOptions`, rustls client config, reqwest helper (`reqwest` feature) | — |
-| `config-loader`, `template-render` | shared libraries (not extracted yet) | — |
+| `template-render` | compiled minijinja template sets (autoescaped `.html`), `content_version` for cache busting | — |
+| `config-loader` | shared library (not extracted yet) | — |
 
 Only `sql-portal` and the integration tests depend on `sql-portal-api`; no other production crate depends on
 axum or tower. `common/*` crates depend on nothing in `sql-portal/` or `datasources/`.
