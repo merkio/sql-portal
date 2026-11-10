@@ -11,18 +11,17 @@
 //! | [`scripts`]       | the `ScriptService` with its catalog and access rule     |
 //! | [`health`]        | the `HealthService` with database and OIDC probes        |
 //! | [`observability`] | tracing, Prometheus and the `Telemetry` port             |
-//! | [`http`]          | the axum router                                          |
+//! | [`http`]          | the HTTP router from `sql-portal-api`                    |
 //!
 //! [`wire`] assembles them; tests replace single adapters through [`Overrides`].
 
 use std::sync::Arc;
 
-use axum::Router;
 use sql_portal_adapters::config::RuntimeConfig;
+pub use sql_portal_api::MetricsRender;
+use sql_portal_api::{Router, RouterSettings, UiSettings};
 use sql_portal_application::{AuthMode, AuthService, ScriptService};
 use sql_portal_domain::{GrantSource, QueryExecutor, ScriptAccessRule, Telemetry};
-pub use sql_portal_ui::MetricsRender;
-use sql_portal_ui::{RouterSettings, UiSettings};
 
 use crate::health::{HealthProbe, HealthService};
 

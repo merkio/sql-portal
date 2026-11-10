@@ -1,10 +1,9 @@
-//! `server:` and `ui:` sections → the axum router.
+//! `server:` and `ui:` sections → the HTTP router (`sql-portal-api`).
 
 use std::sync::Arc;
 
-use axum::Router;
 use sql_portal_adapters::config::RuntimeConfig;
-use sql_portal_ui::{build_router, AppState, RouterSettings, UiSettings};
+use sql_portal_api::{build_router, AppState, Router, RouterSettings, UiSettings};
 
 use crate::{MetricsRender, Services};
 

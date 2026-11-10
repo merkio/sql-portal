@@ -17,7 +17,7 @@ members = [
     "sql-portal/domain",
     "sql-portal/application",
     "sql-portal/adapters",
-    "sql-portal/ui",
+    "sql-portal/api",
     "sql-portal/deployment",
     "sql-portal/testing",
     "sql-portal/integration-tests",

@@ -78,9 +78,7 @@ async fn serve(config_path: &Path) -> anyhow::Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!(%addr, version = env!("CARGO_PKG_VERSION"), "listening");
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    sql_portal_api::serve(listener, router, shutdown_signal()).await?;
     info!("shut down cleanly");
     Ok(())
 }

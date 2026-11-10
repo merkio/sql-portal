@@ -136,7 +136,7 @@ fn adapters_implement_domain_ports_over_the_datasources() {
 #[test]
 fn ui_depends_on_use_cases_not_on_adapters() {
     assert_internal_deps_within(
-        "sql-portal-ui",
+        "sql-portal-api",
         &["sql-portal-domain", "sql-portal-application"],
     );
 }
@@ -149,7 +149,7 @@ fn deployment_is_the_only_crate_that_wires_every_layer() {
         "sql-portal-domain",
         "sql-portal-application",
         "sql-portal-adapters",
-        "sql-portal-ui",
+        "sql-portal-api",
     ] {
         assert!(deployment.contains(layer), "deployment must wire {layer}");
     }

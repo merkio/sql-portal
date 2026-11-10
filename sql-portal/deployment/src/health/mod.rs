@@ -1,6 +1,6 @@
 //! Health checks: the probes, the `HealthService` that aggregates them, and
 //! its wiring. `/healthz` and `/readyz` are served through the
-//! [`Readiness`](sql_portal_ui::Readiness) port.
+//! [`Readiness`](sql_portal_api::Readiness) port.
 
 mod probes;
 mod service;

@@ -38,7 +38,7 @@ pub fn build_recorder() -> (PrometheusRecorder, Handle) {
 
 /// Declares every metric and sets the process-level gauges.
 pub fn describe_and_init(version: &str, auth_enabled: bool) {
-    sql_portal_ui::describe_metrics();
+    sql_portal_api::describe_metrics();
     metrics::describe_counter!(
         "auth_attempts_total",
         "Authentication attempts by provider and outcome"

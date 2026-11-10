@@ -15,7 +15,7 @@ fn manifest(path: &str) -> std::path::PathBuf {
     Path::new(sql_portal_integration_tests::REPO_ROOT).join(path)
 }
 
-async fn get(app: &axum::Router, uri: &str) -> (StatusCode, String) {
+async fn get(app: &sql_portal_api::Router, uri: &str) -> (StatusCode, String) {
     let res = app
         .clone()
         .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())

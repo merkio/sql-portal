@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use sql_portal_ui::{CheckResult, Readiness, ReadinessReport};
+use sql_portal_api::{CheckResult, Readiness, ReadinessReport};
 
 use super::HealthProbe;
 

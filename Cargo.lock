@@ -3526,18 +3526,16 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
  "clap",
  "metrics",
  "prometheus-metrics",
  "serde_yaml_ng",
  "sql-portal-adapters",
+ "sql-portal-api",
  "sql-portal-application",
  "sql-portal-domain",
  "sql-portal-testing",
- "sql-portal-ui",
  "tokio",
- "tower",
  "tracing",
  "tracing-subscriber",
 ]
@@ -3569,6 +3567,30 @@ dependencies = [
  "thiserror 2.0.21",
  "tls-config",
  "tokio",
+ "tracing",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "sql-portal-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "http-body-util",
+ "metrics",
+ "minijinja",
+ "regex",
+ "serde",
+ "serde_json",
+ "sql-portal-application",
+ "sql-portal-domain",
+ "sql-portal-testing",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tower-sessions",
  "tracing",
  "url",
  "uuid",
@@ -3615,6 +3637,7 @@ dependencies = [
  "serde_yaml_ng",
  "sql-portal",
  "sql-portal-adapters",
+ "sql-portal-api",
  "sql-portal-application",
  "sql-portal-domain",
  "sql-portal-testing",
@@ -3632,30 +3655,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "sql-portal-domain",
-]
-
-[[package]]
-name = "sql-portal-ui"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "http-body-util",
- "metrics",
- "minijinja",
- "regex",
- "serde",
- "serde_json",
- "sql-portal-application",
- "sql-portal-domain",
- "sql-portal-testing",
- "tokio",
- "tower",
- "tower-http",
- "tower-sessions",
- "tracing",
- "url",
- "uuid",
 ]
 
 [[package]]

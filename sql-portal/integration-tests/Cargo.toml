@@ -14,6 +14,7 @@ docker = ["dep:testcontainers-modules", "dep:reqwest", "dep:uuid"]
 [dependencies]
 sql-portal = { path = "../deployment" }
 sql-portal-adapters = { path = "../adapters" }
+sql-portal-api = { path = "../api" }
 tls-config = { path = "../../common/tls" }
 sql-portal-application = { path = "../application" }
 sql-portal-domain = { path = "../domain" }
