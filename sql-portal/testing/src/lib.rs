@@ -1,7 +1,6 @@
 //! In-memory fakes for the ports, used by unit and integration tests.
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use async_trait::async_trait;
 
@@ -10,7 +9,7 @@ use sql_portal_domain::{
 };
 use sql_portal_domain::{
     CredentialAuthenticator, OidcAuthorization, OidcPending, OidcProvider, QueryExecutor,
-    ScriptCatalog, Telemetry,
+    ScriptCatalog,
 };
 
 /// LDAP fake accepting exactly one username/password pair.
@@ -161,39 +160,6 @@ impl ScriptCatalog for InMemoryCatalog {
             .iter()
             .find(|s| s.name.as_str() == name)
             .cloned()
-    }
-}
-
-/// Records telemetry calls for assertions.
-#[derive(Default)]
-pub struct RecordingTelemetry {
-    auth: Mutex<Vec<(String, String)>>,
-    scripts: Mutex<Vec<(String, String, usize)>>,
-}
-
-impl RecordingTelemetry {
-    pub fn auth_events(&self) -> Vec<(String, String)> {
-        self.auth.lock().unwrap().clone()
-    }
-
-    pub fn script_events(&self) -> Vec<(String, String, usize)> {
-        self.scripts.lock().unwrap().clone()
-    }
-}
-
-impl Telemetry for RecordingTelemetry {
-    fn auth_attempt(&self, provider: &str, outcome: &str) {
-        self.auth
-            .lock()
-            .unwrap()
-            .push((provider.to_string(), outcome.to_string()));
-    }
-
-    fn script_run(&self, script: &str, outcome: &str, _duration: Duration, rows: usize) {
-        self.scripts
-            .lock()
-            .unwrap()
-            .push((script.to_string(), outcome.to_string(), rows));
     }
 }
 

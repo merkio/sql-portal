@@ -6,8 +6,8 @@ use sql_portal_integration_tests::harness as common;
 use std::time::Duration;
 
 use common::{harness, Options};
-use sql_portal::observability::{describe_and_init, install_metrics, MetricsTelemetry};
-use sql_portal_domain::Telemetry;
+use sql_portal::observability::{describe_and_init, install_metrics, PrometheusMetrics};
+use sql_portal_application::Metrics;
 
 #[tokio::test]
 async fn http_and_business_metrics_are_exposed() {
@@ -22,8 +22,8 @@ async fn http_and_business_metrics_are_exposed() {
     h.get("/healthz", None).await;
     h.get("/scripts/monthly_trend", None).await;
     h.get("/definitely-not-a-route", None).await;
-    MetricsTelemetry.script_run("monthly_trend", "success", Duration::from_millis(5), 6);
-    MetricsTelemetry.auth_attempt("ldap", "invalid_credentials");
+    PrometheusMetrics.script_run("monthly_trend", "success", Duration::from_millis(5), 6);
+    PrometheusMetrics.auth_attempt("ldap", "invalid_credentials");
 
     let text = handle.render();
     assert!(

@@ -5,9 +5,10 @@ use std::time::{Duration, Instant};
 
 use tracing::{info, instrument, warn};
 
+use crate::observability::Metrics;
 use sql_portal_domain::{
     ChartData, PageInfo, PageRequest, Principal, QueryExecutor, QueryRequest, QueryResult,
-    ScriptAccessRule, ScriptCatalog, ScriptDefinition, ScriptError, Telemetry, Value,
+    ScriptAccessRule, ScriptCatalog, ScriptDefinition, ScriptError, Value,
 };
 
 /// Entry shown in the list of available pages.
@@ -56,7 +57,7 @@ pub struct ScriptRun {
 pub struct ScriptService {
     catalog: Arc<dyn ScriptCatalog>,
     executor: Arc<dyn QueryExecutor>,
-    telemetry: Arc<dyn Telemetry>,
+    metrics: Arc<dyn Metrics>,
     access: Arc<dyn ScriptAccessRule>,
 }
 
@@ -75,13 +76,13 @@ impl ScriptService {
     pub fn new(
         catalog: Arc<dyn ScriptCatalog>,
         executor: Arc<dyn QueryExecutor>,
-        telemetry: Arc<dyn Telemetry>,
+        metrics: Arc<dyn Metrics>,
         access: Arc<dyn ScriptAccessRule>,
     ) -> Self {
         Self {
             catalog,
             executor,
-            telemetry,
+            metrics,
             access,
         }
     }
@@ -119,7 +120,7 @@ impl ScriptService {
     }
 
     /// The only gate: finds the script and checks the principal may use it.
-    /// Denials are recorded in telemetry.
+    /// Denials are recorded in metrics.
     #[instrument(skip(self, principal), fields(user = %principal.user.subject))]
     pub fn authorize(
         &self,
@@ -141,7 +142,7 @@ impl ScriptService {
             } else {
                 name
             };
-            self.telemetry
+            self.metrics
                 .script_run(label, e.outcome(), Duration::ZERO, 0);
         }
         outcome
@@ -162,12 +163,12 @@ impl ScriptService {
         let name = script.name.to_string();
         match &outcome {
             Ok(run) => {
-                self.telemetry
+                self.metrics
                     .script_run(&name, "success", run.duration, run.result.rows.len());
                 info!(rows = run.result.rows.len(), "script executed");
             }
             Err(e) => {
-                self.telemetry
+                self.metrics
                     .script_run(&name, e.outcome(), started.elapsed(), 0);
                 warn!(error = %e, "script run failed");
             }
@@ -268,10 +269,11 @@ impl ScriptService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::observability::RecordingMetrics;
     use sql_portal_domain::scripts::{ParamDefinition, ParamKind};
     use sql_portal_domain::{ChartDefinition, ChartKind, Permission, QueryError};
     use sql_portal_domain::{PermissionSet, ScriptName};
-    use sql_portal_testing::{FakeExecutor, InMemoryCatalog, RecordingTelemetry};
+    use sql_portal_testing::{FakeExecutor, InMemoryCatalog};
 
     fn script(name: &str, title: &str, perms: &[&str]) -> ScriptDefinition {
         let mut s =
@@ -289,8 +291,8 @@ mod tests {
     fn service(
         scripts: Vec<ScriptDefinition>,
         exec: FakeExecutor,
-    ) -> (ScriptService, Arc<RecordingTelemetry>, Arc<FakeExecutor>) {
-        let t = Arc::new(RecordingTelemetry::default());
+    ) -> (ScriptService, Arc<RecordingMetrics>, Arc<FakeExecutor>) {
+        let t = Arc::new(RecordingMetrics::default());
         let exec = Arc::new(exec);
         (
             ScriptService::new(
@@ -337,7 +339,7 @@ mod tests {
         let svc = ScriptService::new(
             Arc::new(InMemoryCatalog::new(vec![script("a", "A", &[])])),
             Arc::new(FakeExecutor::default()),
-            Arc::new(RecordingTelemetry::default()),
+            Arc::new(RecordingMetrics::default()),
             Arc::new(DenyEverything),
         );
         // The default policy would allow this principal; the replacement does not.
@@ -397,7 +399,7 @@ mod tests {
         }];
         s.validate().unwrap();
 
-        let (svc, telemetry, exec) = service(
+        let (svc, metrics, exec) = service(
             vec![s],
             FakeExecutor::returning(QueryResult {
                 columns: vec!["k".into(), "v".into()],
@@ -420,7 +422,7 @@ mod tests {
         let req = exec.last_request().unwrap();
         assert_eq!(req.params, vec![("n".to_string(), Value::Int(7))]);
         assert_eq!(
-            telemetry.script_events(),
+            metrics.script_events(),
             vec![("a".to_string(), "success".to_string(), 1)]
         );
     }
@@ -432,7 +434,7 @@ mod tests {
         let mut n = ParamDefinition::new("n", ParamKind::Integer);
         n.required = true;
         s.params = vec![n];
-        let (svc, telemetry, exec) = service(vec![s], FakeExecutor::default());
+        let (svc, metrics, exec) = service(vec![s], FakeExecutor::default());
 
         let authorized = svc.authorize(&principal(&[]), "a").unwrap();
         let err = svc
@@ -441,30 +443,29 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, ScriptError::InvalidParams(ref e) if e.len() == 1));
         assert!(exec.last_request().is_none());
-        assert_eq!(telemetry.script_events()[0].1, "invalid_params");
+        assert_eq!(metrics.script_events()[0].1, "invalid_params");
     }
 
     #[test]
     fn denied_access_is_recorded_and_never_authorized() {
-        let (svc, telemetry, exec) =
-            service(vec![script("a", "A", &["x"])], FakeExecutor::default());
+        let (svc, metrics, exec) = service(vec![script("a", "A", &["x"])], FakeExecutor::default());
         let err = svc.authorize(&principal(&[]), "a").unwrap_err();
         assert!(matches!(err, ScriptError::Forbidden));
         assert!(exec.last_request().is_none());
-        assert_eq!(telemetry.script_events()[0].1, "forbidden");
+        assert_eq!(metrics.script_events()[0].1, "forbidden");
     }
 
     #[test]
     fn unknown_scripts_use_bounded_metric_label() {
-        let (svc, telemetry, _) = service(vec![], FakeExecutor::default());
+        let (svc, metrics, _) = service(vec![], FakeExecutor::default());
         let _ = svc.authorize(&principal(&[]), "whatever");
-        assert_eq!(telemetry.script_events()[0].0, "_unknown");
-        assert_eq!(telemetry.script_events()[0].1, "not_found");
+        assert_eq!(metrics.script_events()[0].0, "_unknown");
+        assert_eq!(metrics.script_events()[0].1, "not_found");
     }
 
     #[tokio::test]
     async fn query_errors_are_propagated_and_classified() {
-        let (svc, telemetry, _) = service(
+        let (svc, metrics, _) = service(
             vec![script("a", "A", &[])],
             FakeExecutor::failing(QueryError::Timeout),
         );
@@ -474,7 +475,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, ScriptError::Query(QueryError::Timeout)));
-        assert_eq!(telemetry.script_events()[0].1, "timeout");
+        assert_eq!(metrics.script_events()[0].1, "timeout");
     }
 
     #[tokio::test]

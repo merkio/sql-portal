@@ -1,4 +1,4 @@
-//! `observability:` section → tracing, the Prometheus recorder and the `Telemetry` port.
+//! `observability:` section → tracing, the Prometheus recorder and the `Metrics` port.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,7 +6,7 @@ use std::time::Duration;
 use metrics::{counter, gauge, histogram};
 use prometheus_metrics::{Buckets, Handle, PrometheusRecorder, DEFAULT_LATENCY_BUCKETS};
 use sql_portal_adapters::config::{AppConfig, LogFormat};
-use sql_portal_domain::Telemetry;
+use sql_portal_application::Metrics;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::MetricsRender;
@@ -78,16 +78,17 @@ pub fn init_tracing(level: &str, format: LogFormat) {
     let _ = result;
 }
 
-/// The supplied telemetry, or metrics recorded through the `metrics` facade.
-pub fn telemetry(supplied: Option<Arc<dyn Telemetry>>) -> Arc<dyn Telemetry> {
-    supplied.unwrap_or_else(|| Arc::new(MetricsTelemetry))
+/// The supplied sink, or Prometheus through the `metrics` facade.
+pub fn metrics(supplied: Option<Arc<dyn Metrics>>) -> Arc<dyn Metrics> {
+    supplied.unwrap_or_else(|| Arc::new(PrometheusMetrics))
 }
 
-/// `Telemetry` port implementation backed by the `metrics` facade.
+/// `Metrics` port implementation backed by the `metrics` facade, exported
+/// by the Prometheus recorder.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct MetricsTelemetry;
+pub struct PrometheusMetrics;
 
-impl Telemetry for MetricsTelemetry {
+impl Metrics for PrometheusMetrics {
     fn auth_attempt(&self, provider: &str, outcome: &str) {
         counter!(
             "auth_attempts_total",
@@ -121,11 +122,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn telemetry_emits_expected_series() {
+    fn prometheus_metrics_emit_expected_series() {
         let (recorder, handle) = build_recorder();
         metrics::with_local_recorder(&recorder, || {
-            MetricsTelemetry.auth_attempt("ldap", "success");
-            MetricsTelemetry.script_run("sales", "success", Duration::from_millis(30), 4);
+            PrometheusMetrics.auth_attempt("ldap", "success");
+            PrometheusMetrics.script_run("sales", "success", Duration::from_millis(30), 4);
             describe_and_init("1.2.3", true);
         });
         let text = handle.render();

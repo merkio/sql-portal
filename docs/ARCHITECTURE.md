@@ -47,14 +47,14 @@ crate root (`sql_portal_domain::QueryExecutor`).
 | `access` | `Permission`, `PermissionSet`, `User`, `Principal`, `AccessPolicy`, `LocalGrants` | `CredentialAuthenticator`, `OidcProvider`, `GithubLogin`, `GrantSource`, `ScriptAccessRule` |
 | `query` | `QueryRequest`, `QueryResult`, `QueryError`, paging | `QueryExecutor` |
 | `scripts` | `ScriptDefinition` (aggregate), `ParamDefinition`, `ChartDefinition`, `sql_template`, `ConfigScriptCatalog` (in-memory catalog) | `ScriptCatalog` |
-| `telemetry` | `NoopTelemetry` | `Telemetry` |
 
 ## Application (`sql-portal/application`)
 
 | module | use case |
 |---|---|
 | `auth` | `AuthService`: the master `enabled` switch, LDAP login, OIDC/GitHub flows (state check), principal resolution |
-| `scripts` | `ScriptService`: list / view / run with permission checks, parameter binding, charts, telemetry |
+| `scripts` | `ScriptService`: list / view / run with permission checks, parameter binding, charts, metrics |
+| `observability` | the `Metrics` port the use cases report to (auth attempts, script runs), and `NoopMetrics` |
 
 ## Adapters (`sql-portal/adapters`)
 
@@ -83,7 +83,7 @@ The only crate that knows concrete adapters. Each module configures one part of 
 | `auth` | the `AuthService` and its providers |
 | `scripts` | the `ScriptService` with catalog and access rule |
 | `health` | the `HealthProbe` trait, `DatabaseProbe`/`OidcProbe`, and `HealthService` (implements `api::Readiness`) |
-| `observability` | tracing, the Prometheus recorder (`prometheus-metrics`), metric declarations, `MetricsTelemetry` |
+| `observability` | tracing, the Prometheus recorder (`prometheus-metrics`), metric declarations, `PrometheusMetrics` (implements `application::Metrics`) |
 | `http` | the router from `sql-portal-api` |
 
 `lib.rs` assembles them in `wire()`; `build_app_with(…, Overrides)` lets tests (or another crate) replace

@@ -218,6 +218,15 @@ fn health_checks_live_in_deployment() {
 }
 
 #[test]
+fn the_metrics_port_belongs_to_the_use_cases() {
+    let root = Path::new(REPO_ROOT).join("sql-portal");
+    for path in ["domain/src/telemetry", "domain/src/observability"] {
+        assert!(!root.join(path).exists(), "{path} must not exist");
+    }
+    assert!(root.join("application/src/observability.rs").is_file());
+}
+
+#[test]
 fn test_fakes_are_never_a_production_dependency() {
     let graph = dependency_graph();
     let dependents: Vec<_> = graph

@@ -10,7 +10,7 @@
 //! | [`auth`]          | the `AuthService` with LDAP / OIDC / GitHub providers    |
 //! | [`scripts`]       | the `ScriptService` with its catalog and access rule     |
 //! | [`health`]        | the `HealthService` with database and OIDC probes        |
-//! | [`observability`] | tracing, Prometheus and the `Telemetry` port             |
+//! | [`observability`] | tracing, Prometheus and the `Metrics` port               |
 //! | [`http`]          | the HTTP router from `sql-portal-api`                    |
 //!
 //! [`wire`] assembles them; tests replace single adapters through [`Overrides`].
@@ -20,8 +20,8 @@ use std::sync::Arc;
 use sql_portal_adapters::config::RuntimeConfig;
 pub use sql_portal_api::MetricsRender;
 use sql_portal_api::{Router, RouterSettings, UiSettings};
-use sql_portal_application::{AuthMode, AuthService, ScriptService};
-use sql_portal_domain::{GrantSource, QueryExecutor, ScriptAccessRule, Telemetry};
+use sql_portal_application::{AuthMode, AuthService, Metrics, ScriptService};
+use sql_portal_domain::{GrantSource, QueryExecutor, ScriptAccessRule};
 
 use crate::health::{HealthProbe, HealthService};
 
@@ -41,7 +41,7 @@ pub struct Overrides {
     pub auth: Option<AuthMode>,
     pub grants: Option<Arc<dyn GrantSource>>,
     pub script_access: Option<Arc<dyn ScriptAccessRule>>,
-    pub telemetry: Option<Arc<dyn Telemetry>>,
+    pub metrics: Option<Arc<dyn Metrics>>,
     /// Probes added after the database and OIDC probes.
     pub extra_probes: Vec<Arc<dyn HealthProbe>>,
 }
@@ -63,17 +63,17 @@ pub async fn wire(rt: &RuntimeConfig, overrides: Overrides) -> anyhow::Result<Se
         auth,
         grants,
         script_access,
-        telemetry,
+        metrics,
         extra_probes,
     } = overrides;
 
     let executor = database::executor(rt, executor).await?;
-    let telemetry = observability::telemetry(telemetry);
+    let metrics = observability::metrics(metrics);
     let grants = access::grant_source(rt, grants)?;
     let mode = auth::mode(rt, auth)?;
     let oidc = auth::oidc_provider(&mode);
-    let auth = auth::service(mode, grants, telemetry.clone());
-    let scripts = scripts::service(rt, executor.clone(), telemetry, script_access);
+    let auth = auth::service(mode, grants, metrics.clone());
+    let scripts = scripts::service(rt, executor.clone(), metrics, script_access);
     let health = health::service(executor, oidc, extra_probes);
 
     Ok(Services {

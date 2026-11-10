@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use tracing::{info, instrument, warn};
 
+use crate::observability::Metrics;
 use sql_portal_domain::GrantSource;
 use sql_portal_domain::{AuthError, Grants, Principal, User};
 use sql_portal_domain::{
-    CredentialAuthenticator, GithubLogin, OidcAuthorization, OidcPending, OidcProvider, Telemetry,
+    CredentialAuthenticator, GithubLogin, OidcAuthorization, OidcPending, OidcProvider,
 };
 
 /// Where a GitHub sign-in starts.
@@ -42,19 +43,19 @@ pub enum AuthMode {
 pub struct AuthService {
     mode: AuthMode,
     permissions: Arc<dyn GrantSource>,
-    telemetry: Arc<dyn Telemetry>,
+    metrics: Arc<dyn Metrics>,
 }
 
 impl AuthService {
     pub fn new(
         mode: AuthMode,
         permissions: Arc<dyn GrantSource>,
-        telemetry: Arc<dyn Telemetry>,
+        metrics: Arc<dyn Metrics>,
     ) -> Self {
         Self {
             mode,
             permissions,
-            telemetry,
+            metrics,
         }
     }
 
@@ -208,7 +209,7 @@ impl AuthService {
             Ok(_) => "success",
             Err(e) => e.outcome(),
         };
-        self.telemetry.auth_attempt(provider, outcome);
+        self.metrics.auth_attempt(provider, outcome);
     }
 }
 
@@ -222,11 +223,12 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sql_portal_domain::telemetry::NoopTelemetry;
+    use crate::observability::NoopMetrics;
+    use crate::observability::RecordingMetrics;
     use sql_portal_domain::GrantSource;
     use sql_portal_domain::LocalGrants;
     use sql_portal_domain::{AccessPolicy, AuthProvider, Grants, PermissionSet};
-    use sql_portal_testing::{FakeLdap, FakeOidc, RecordingTelemetry};
+    use sql_portal_testing::{FakeLdap, FakeOidc};
     use std::collections::BTreeMap;
 
     fn policy() -> AccessPolicy {
@@ -239,7 +241,7 @@ mod tests {
         .unwrap()
     }
 
-    fn service(enabled: bool, telemetry: Arc<dyn Telemetry>) -> AuthService {
+    fn service(enabled: bool, metrics: Arc<dyn Metrics>) -> AuthService {
         let mode = if enabled {
             AuthMode::Enabled(Providers {
                 ldap: Some(Arc::new(FakeLdap::accepting("alice", "pw"))),
@@ -249,12 +251,12 @@ mod tests {
         } else {
             AuthMode::Disabled
         };
-        AuthService::new(mode, Arc::new(LocalGrants::new(policy())), telemetry)
+        AuthService::new(mode, Arc::new(LocalGrants::new(policy())), metrics)
     }
 
     #[tokio::test]
     async fn disabled_auth_serves_anonymous_admin() {
-        let s = service(false, Arc::new(NoopTelemetry));
+        let s = service(false, Arc::new(NoopMetrics));
         let p = s.principal(None).await.unwrap();
         assert!(p
             .permissions
@@ -270,7 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn enabled_auth_requires_session_user() {
-        let s = service(true, Arc::new(NoopTelemetry));
+        let s = service(true, Arc::new(NoopMetrics));
         assert!(s.principal(None).await.is_none());
     }
 
@@ -305,7 +307,7 @@ mod tests {
         let s = AuthService::new(
             AuthMode::Enabled(Providers::default()),
             Arc::new(FixedSource(Some(grants))),
-            Arc::new(NoopTelemetry),
+            Arc::new(NoopMetrics),
         );
         let p = s.principal(Some(user("zoe"))).await.unwrap();
         assert!(p.roles.contains("analyst"));
@@ -317,7 +319,7 @@ mod tests {
         let s = AuthService::new(
             AuthMode::Enabled(Providers::default()),
             Arc::new(FixedSource(None)),
-            Arc::new(NoopTelemetry),
+            Arc::new(NoopMetrics),
         );
         let p = s
             .principal(Some(user("zoe")))
@@ -329,7 +331,7 @@ mod tests {
 
     #[tokio::test]
     async fn ldap_login_success_and_failure_are_recorded() {
-        let t = Arc::new(RecordingTelemetry::default());
+        let t = Arc::new(RecordingMetrics::default());
         let s = service(true, t.clone());
         let user = s.login_ldap("alice", "pw").await.unwrap();
         assert_eq!(user.subject, "alice");
@@ -348,7 +350,7 @@ mod tests {
 
     #[tokio::test]
     async fn principal_resolves_default_roles() {
-        let s = service(true, Arc::new(NoopTelemetry));
+        let s = service(true, Arc::new(NoopMetrics));
         let user = s.login_ldap("alice", "pw").await.unwrap();
         let p = s.principal(Some(user)).await.unwrap();
         assert!(p.roles.contains("r"));
@@ -359,7 +361,7 @@ mod tests {
         let s = AuthService::new(
             AuthMode::Enabled(Providers::default()),
             Arc::new(LocalGrants::new(policy())),
-            Arc::new(NoopTelemetry),
+            Arc::new(NoopMetrics),
         );
         assert!(matches!(
             s.login_ldap("a", "b").await,
@@ -373,7 +375,7 @@ mod tests {
 
     #[tokio::test]
     async fn oidc_flow_checks_state() {
-        let t = Arc::new(RecordingTelemetry::default());
+        let t = Arc::new(RecordingMetrics::default());
         let s = service(true, t.clone());
         let auth = s.oidc_begin().await.unwrap();
 

@@ -4,10 +4,8 @@ use std::sync::Arc;
 
 use sql_portal_adapters::auth::{GithubAdapter, LdapAuthenticator, OidcAdapter};
 use sql_portal_adapters::config::runtime::{AuthRuntime, RuntimeConfig};
-use sql_portal_application::{AuthMode, AuthService, Providers};
-use sql_portal_domain::{
-    CredentialAuthenticator, GithubLogin, GrantSource, OidcProvider, Telemetry,
-};
+use sql_portal_application::{AuthMode, AuthService, Metrics, Providers};
+use sql_portal_domain::{CredentialAuthenticator, GithubLogin, GrantSource, OidcProvider};
 use tracing::{info, warn};
 
 /// The authentication mode: the supplied one, or providers built from config.
@@ -30,9 +28,9 @@ pub fn oidc_provider(mode: &AuthMode) -> Option<Arc<dyn OidcProvider>> {
 pub fn service(
     mode: AuthMode,
     grants: Arc<dyn GrantSource>,
-    telemetry: Arc<dyn Telemetry>,
+    metrics: Arc<dyn Metrics>,
 ) -> Arc<AuthService> {
-    Arc::new(AuthService::new(mode, grants, telemetry))
+    Arc::new(AuthService::new(mode, grants, metrics))
 }
 
 fn mode_from_config(rt: &RuntimeConfig) -> anyhow::Result<AuthMode> {

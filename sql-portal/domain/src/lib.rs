@@ -7,7 +7,6 @@ pub mod access;
 pub mod common;
 pub mod query;
 pub mod scripts;
-pub mod telemetry;
 
 // Re-export key types for convenient access
 pub use access::{
@@ -25,4 +24,3 @@ pub use scripts::{
     ChartData, ChartDefinition, ChartKind, Dataset, DatasetData, FieldError, ParamDefinition,
     ParamKind, ScriptCatalog, ScriptDefinition, ScriptError, ScriptName, SelectOption,
 };
-pub use telemetry::Telemetry;

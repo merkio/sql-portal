@@ -14,8 +14,7 @@ use sql_portal::{http::router, wire, Overrides};
 use sql_portal_adapters::config::load_from_path;
 use sql_portal_adapters::sql::SqlExecutor;
 use sql_portal_api::Router;
-use sql_portal_application::{AuthMode, LocalGrants, Providers};
-use sql_portal_domain::telemetry::NoopTelemetry;
+use sql_portal_application::{AuthMode, LocalGrants, NoopMetrics, Providers};
 use sql_portal_domain::{AuthProvider, User};
 use sql_portal_domain::{GithubLogin, QueryExecutor};
 use sql_portal_testing::{FakeGithub, FakeLdap, FakeOidc};
@@ -43,7 +42,7 @@ impl Default for Options {
 }
 
 /// Builds the production router over the demo configuration, through the same
-/// wiring the server uses. Only the database connection, the telemetry sink and
+/// wiring the server uses. Only the database connection, the metrics sink and
 /// the identity providers are replaced, and the UI settings are pinned so the
 /// tests can check them.
 pub async fn harness(options: Options) -> Harness {
@@ -87,7 +86,7 @@ pub async fn harness(options: Options) -> Harness {
             executor: Some(executor),
             auth: Some(auth),
             grants: Some(Arc::new(LocalGrants::new(rt.policy.clone()))),
-            telemetry: Some(Arc::new(NoopTelemetry)),
+            metrics: Some(Arc::new(NoopMetrics)),
             extra_probes: options.extra_probes,
             ..Default::default()
         },

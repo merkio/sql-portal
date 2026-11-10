@@ -10,7 +10,6 @@ use sql_portal_adapters::sql::{connect_database, prepare_database};
 use sql_portal_domain::access::identity::{AuthProvider, User};
 use sql_portal_domain::scripts::repository::ConfigScriptCatalog;
 use sql_portal_domain::scripts::ScriptDefinition;
-use sql_portal_domain::telemetry::NoopTelemetry;
 use sql_portal_domain::{AccessPolicy, LocalGrants, Permission, QueryRequest, ScriptName};
 use tls_config::TlsOptions;
 
@@ -368,7 +367,6 @@ mod script_service_integration_tests {
     #[test]
     fn test_authorized_script_execution() {
         let (catalog, policy) = setup_scripts();
-        let _telemetry = Arc::new(NoopTelemetry);
 
         let user = User {
             subject: "alice".to_string(),
