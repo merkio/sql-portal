@@ -2559,6 +2559,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus-metrics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "metrics",
+ "metrics-exporter-prometheus",
+]
+
+[[package]]
 name = "prost"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3518,6 +3527,8 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "metrics",
+ "prometheus-metrics",
  "serde_yaml_ng",
  "sql-portal-adapters",
  "sql-portal-application",
@@ -3540,8 +3551,6 @@ dependencies = [
  "clickhouse-dialect",
  "futures-util",
  "ldap3",
- "metrics",
- "metrics-exporter-prometheus",
  "openidconnect",
  "percent-encoding",
  "postgres-dialect",
@@ -3559,7 +3568,6 @@ dependencies = [
  "tls-config",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "url",
  "uuid",
 ]

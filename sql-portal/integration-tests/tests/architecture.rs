@@ -128,6 +128,7 @@ fn adapters_implement_domain_ports_over_the_datasources() {
             "sqlite-dialect",
             "postgres-dialect",
             "clickhouse-dialect",
+            "tls-config",
         ],
     );
 }
@@ -191,7 +192,12 @@ fn datasources_build_on_the_sql_executor_only() {
 
 #[test]
 fn common_crates_do_not_know_the_portal() {
-    for name in ["config-loader", "template-render"] {
+    for name in [
+        "config-loader",
+        "template-render",
+        "tls-config",
+        "prometheus-metrics",
+    ] {
         assert_internal_deps_within(name, &[]);
     }
 }

@@ -15,12 +15,9 @@ tls-config = { path = "../../common/tls", features = ["reqwest"] }
 anyhow = "1"
 async-trait = "0.1"
 ldap3 = { version = "0.12", default-features = false, features = ["tls-rustls-ring"] }
-metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.17", default-features = false }
 openidconnect = "4.1"
 regex = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any", "sqlite", "postgres"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 tracing = "0.1"

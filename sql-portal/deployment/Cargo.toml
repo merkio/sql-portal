@@ -20,6 +20,8 @@ sql-portal-domain = { path = "../domain" }
 sql-portal-application = { path = "../application" }
 sql-portal-adapters = { path = "../adapters" }
 sql-portal-ui = { path = "../ui" }
+prometheus-metrics = { path = "../../common/prometheus" }
+metrics = "0.24"
 anyhow = "1"
 axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }

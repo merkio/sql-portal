@@ -5,6 +5,7 @@ members = [
     "common/template-render",
     "common/config-loader",
     "common/tls",
+    "common/prometheus",
     
     # Datasources
     "datasources/sql-executor",

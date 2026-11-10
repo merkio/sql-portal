@@ -6,12 +6,12 @@ use sql_portal_integration_tests::harness as common;
 use std::time::Duration;
 
 use common::{harness, Options};
-use sql_portal_adapters::telemetry::{describe_and_init, install_prometheus, MetricsTelemetry};
+use sql_portal::observability::{describe_and_init, install_metrics, MetricsTelemetry};
 use sql_portal_domain::Telemetry;
 
 #[tokio::test]
 async fn http_and_business_metrics_are_exposed() {
-    let handle = install_prometheus().expect("install recorder once");
+    let handle = install_metrics().expect("install recorder once");
     describe_and_init("test", true);
 
     let h = harness(Options {

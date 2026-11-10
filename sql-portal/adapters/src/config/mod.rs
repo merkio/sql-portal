@@ -6,5 +6,5 @@ pub mod model;
 pub mod runtime;
 
 pub use loader::{load_from_path, load_from_str, ConfigError};
-pub use model::AppConfig;
+pub use model::{AppConfig, LogFormat};
 pub use runtime::RuntimeConfig;

@@ -6,6 +6,20 @@ use axum::middleware::Next;
 use axum::response::Response;
 use metrics::{counter, gauge, histogram};
 
+/// Declares the HTTP metrics recorded by [`track_metrics`].
+pub fn describe_metrics() {
+    metrics::describe_counter!("http_requests_total", "Total HTTP requests handled");
+    metrics::describe_histogram!(
+        "http_request_duration_seconds",
+        metrics::Unit::Seconds,
+        "HTTP request latency"
+    );
+    metrics::describe_gauge!(
+        "http_requests_in_flight",
+        "HTTP requests currently being served"
+    );
+}
+
 /// Records request count, latency and in-flight gauge using the *matched
 /// route* (not the raw path) as label, which keeps cardinality bounded.
 pub async fn track_metrics(req: Request, next: Next) -> Response {
