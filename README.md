@@ -24,6 +24,29 @@ Built with Rust, `axum` and `tokio`; structured as clean architecture / DDD, dev
   `/metrics` (Prometheus), `tracing` logs (text or JSON) with request ids.
 - **Docker image** (distroless, non-root, built-in `HEALTHCHECK`) and release binaries.
 
+## Project structure
+
+One Cargo workspace (root `Cargo.toml`) in three groups:
+
+```
+common/          shared libraries, independent of the portal
+  config-loader/     (placeholder, not used yet)
+  template-render/   (placeholder, not used yet)
+datasources/     SQL dialects, no I/O
+  sql-executor/      the dialect contract (Dialect trait, Cell, Statement)
+  sqlite/ postgres/ clickhouse/   one dialect each, built on sql-executor
+sql-portal/      the application
+  domain/            model and ports, no web/database/identity-provider crates
+  application/       use cases: auth/, scripts/, health/
+  adapters/          port implementations: sql/, auth/, grants/, health/, config/, telemetry/, tls/
+  ui/                axum routes, views, extractors, middleware
+  deployment/        composition root (one module per configured part) + main.rs
+  testing/           in-memory fakes of the ports (dev-dependency only)
+  integration-tests/ in-process, database and Docker-image tests
+```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layer rules.
+
 ## Quick start
 
 ```bash
@@ -154,9 +177,10 @@ Parameters travel in the query string, so results are bookmarkable and shareable
   `database.migrations.dir` (default `migrations/sqlite`) in file-name order at startup, before `init_sql_files`.
   Nothing is applied implicitly, and a missing directory is a startup error. The demo configuration enables them
   explicitly to load its sample data.
-- Each database's SQL rules live in its own crate under `crates/`: `dialect-postgres`, `dialect-clickhouse`
-  and `dialect-sqlite`, built on the `sql-dialect` contract (`Dialect` trait, `Cell`, `Statement`). They do no I/O
-  and can be used as dependencies. Adding a database means a new `dialect-*` crate plus a `QueryExecutor` adapter.
+- Each database's SQL rules live in its own crate under `datasources/`: `postgres-dialect`, `clickhouse-dialect`
+  and `sqlite-dialect`, built on the `sql-executor` contract (`Dialect` trait, `Cell`, `Statement`). They do no I/O
+  and can be used as dependencies. Adding a database means a new dialect crate plus a `QueryExecutor` adapter
+  in `sql-portal/adapters/src/sql/`.
 - ClickHouse: `:name` placeholders become typed server parameters (`{name:Int64}`, `{name:String}`, …), so
   values are never spliced into the SQL. Scripts run with `readonly=2` on the server, and each query gets a
   `max_execution_time` equal to the script timeout. Use a read-only ClickHouse user as well.
@@ -179,7 +203,7 @@ Parameters travel in the query string, so results are bookmarkable and shareable
 - `ca_file` verifies the chain and the host name. A self-signed server certificate must not have `CA:TRUE` (rustls
   rejects it as a leaf); issue it with `basicConstraints=CA:FALSE`.
 - `cert_file` needs `key_file`, and needs `ca_file` (or `insecure`) so the server is still verified.
-- Live tests (ignored by default): `cargo test --test tls -- --ignored`, with `TLS_PG_URL`, `TLS_CH_URL`, `TLS_LDAP_URL`,
+- Live tests (ignored by default): `cargo test -p sql-portal-integration-tests --test tls -- --ignored`, with `TLS_PG_URL`, `TLS_CH_URL`, `TLS_LDAP_URL`,
   `TLS_CA_FILE`, `TLS_PG_MTLS_URL`, `TLS_CLIENT_CERT`, `TLS_CLIENT_KEY` set for the servers you have.
 
 ## Try it locally: the showcase
@@ -226,7 +250,7 @@ The `Gallery` scripts put several chart kinds over the same data, with filters t
 | Gallery 5 · survey by age band | bar, line, doughnut | segment (select), minimum age (integer) |
 | Gallery 6 · daily traffic, paged | line, bar | date range, minimum visits, weekdays only (boolean) |
 
-The data and the scripts are in `config/migrations/sqlite/` and `config/config.demo.yaml`. The tests in `tests/presentation.rs` check each mode.
+The data and the scripts are in `config/migrations/sqlite/` and `config/config.demo.yaml`. The tests in `sql-portal/integration-tests/tests/presentation.rs` check each mode.
 
 ### Sharing a view
 
@@ -340,16 +364,35 @@ Logs use `tracing` (`log_format: json` for log shippers); every request gets an 
   Set `ui.chartjs_url` to a self-hosted file (e.g. `/static/chart.js` via your proxy) to avoid the CDN.
 - **Not included** (put these in front, or extend): login rate limiting/lockout, TLS termination, a persistent/shared session store.
   Sessions are held **in memory**: they are lost on restart and not shared between replicas — run one replica or use sticky sessions,
-  or swap `MemoryStore` in `presentation/router.rs` for a persistent `tower-sessions` store.
+  or swap `MemoryStore` in `sql-portal/ui/src/router.rs` for a persistent `tower-sessions` store.
 - Metrics and health endpoints are unauthenticated; restrict them at the network level if needed.
 
 ## Development
 
 ```bash
-make lint        # rustfmt --check + clippy -D warnings
-make test        # unit + integration tests (hermetic: SQLite in memory, fake LDAP/OIDC)
-make coverage    # needs cargo-llvm-cov
+make lint         # rustfmt --check + clippy -D warnings
+make test         # unit + in-process integration tests; no Docker needed
+make test-docker  # everything above + PostgreSQL, ClickHouse and the portal image (builds it first)
+make test-e2e     # only the end-to-end checks of the portal image
+make coverage     # needs cargo-llvm-cov
 ```
+
+**Tests.** Unit tests sit next to the code in each crate. Integration tests live in
+`sql-portal/integration-tests/tests/`:
+
+| file | runs against | needs |
+|---|---|---|
+| `http_api.rs`, `presentation.rs`, `github_login.rs`, `metrics.rs`, `grants.rs`, `bootstrap.rs`, `sqlite_and_access.rs` | the real router, in process, fake identity providers, SQLite in memory | nothing |
+| `architecture.rs` | the Cargo dependency graph (layer rules) | nothing |
+| `postgres.rs`, `clickhouse.rs` | PostgreSQL 16 / ClickHouse 24.8 containers | `--features docker` |
+| `portal_image.rs` | the portal Docker image (`SCRIPT_PORTAL_IMAGE`, default `script-portal:test`), alone and with PostgreSQL on a shared network | `--features docker` + the image |
+| `tls.rs` | TLS-enabled servers you provide (env vars) | `-- --ignored` |
+
+Container tests use [testcontainers](https://docs.rs/testcontainers) and work with Docker or Podman
+(`DOCKER_HOST` is honoured). Every container is stopped and removed when its test ends, including on
+failure. Database containers are shared by the tests of one binary and removed after the last one.
+The portal image is never pulled, so build it first (`make image-test`). If a run is killed before
+cleanup, `make test-docker-clean` removes leftovers (they carry the label `org.sql-portal.integration-test`).
 
 The LDAP and OIDC network paths (`ldap.rs`, `oidc.rs`) are covered by unit tests of their pure logic
 (filter escaping, claim/entry mapping, error handling) but **not** by tests against a live directory or IdP.
@@ -358,9 +401,10 @@ Verify them against your environment (a `lldap` or Keycloak container works well
 ### CI and releases
 
 - `.github/workflows/ci.yml` runs on every pull request: rustfmt, clippy (`-D warnings`), tests, coverage
-  (`cargo-llvm-cov`, fails below `COVERAGE_MIN`, default 70 %), a Docker build with a smoke test, and `cargo audit`.
-- `.github/workflows/release.yml` runs on tags like `v1.2.3` (the tag must match `Cargo.toml`):
-  it re-runs the checks, builds binaries (Linux x86_64/arm64, macOS arm64, Windows x86_64) and attaches them with
+  (`cargo-llvm-cov`, fails below `COVERAGE_MIN`, default 70 %), the container tests against a freshly built image
+  (plus a check of the image's `HEALTHCHECK` under Docker), and `cargo audit`.
+- `.github/workflows/release.yml` runs on tags like `v1.2.3`:
+  it re-runs the checks (the tag must match the version in `sql-portal/deployment/Cargo.toml`), builds binaries (Linux x86_64/arm64, macOS arm64, Windows x86_64) and attaches them with
   checksums to the GitHub release, and pushes a multi-arch image to Docker Hub.
   Configure the secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (and optionally the variable `DOCKERHUB_REPOSITORY`).
 

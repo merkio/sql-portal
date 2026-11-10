@@ -4,19 +4,16 @@
 FROM rust:1-bookworm AS builder
 WORKDIR /app
 
-# 1. Build dependencies only (cached until Cargo.toml/Cargo.lock change).
+# Workspace manifests and sources. Registry and target directories are BuildKit
+# cache mounts, so unchanged dependencies are not rebuilt between builds.
 COPY Cargo.toml Cargo.lock ./
-COPY crates ./crates
-RUN mkdir src \
-    && echo 'fn main() {}' > src/main.rs \
-    && touch src/lib.rs \
-    && cargo build --release --locked \
-    && rm -rf src target/release/script-portal target/release/deps/script_portal* \
-       target/release/deps/libscript_portal* target/release/.fingerprint/script-portal*
-
-# 2. Build the application.
-COPY src ./src
-RUN cargo build --release --locked
+COPY common ./common
+COPY datasources ./datasources
+COPY sql-portal ./sql-portal
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    cargo build --release --locked --bin script-portal \
+    && cp target/release/script-portal /usr/local/bin/script-portal
 
 # ---------- runtime stage -----------------------------------------------------
 # distroless/cc: glibc + CA certificates, no shell, runs as non-root.
@@ -29,7 +26,7 @@ LABEL org.opencontainers.image.title="script-portal" \
       org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
-COPY --from=builder /app/target/release/script-portal /usr/local/bin/script-portal
+COPY --from=builder /usr/local/bin/script-portal /usr/local/bin/script-portal
 COPY config/ /app/config/
 
 # The bundled demo config DISABLES authentication and uses an in-memory SQLite

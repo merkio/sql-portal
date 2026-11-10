@@ -38,7 +38,7 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --all-features --locked -- -D warnings
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   test:
     name: Tests
@@ -47,13 +47,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Unit and integration tests
-        run: cargo test --all-features --locked
+      - name: Unit and in-process integration tests (no Docker)
+        run: cargo test --workspace --locked
       - name: Validate shipped configuration files
         run: |
-          cargo run --locked -- --config config/config.demo.yaml check-config
+          cargo run --locked --bin script-portal -- --config config/config.demo.yaml check-config
           DATABASE_URL="sqlite::memory:" LDAP_BIND_PASSWORD=x OIDC_CLIENT_SECRET=y \
-            cargo run --locked -- --config config/config.example.yaml check-config
+            cargo run --locked --bin script-portal -- --config config/config.example.yaml check-config
 
   coverage:
     name: Test coverage
@@ -69,8 +69,8 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - name: Collect coverage
         run: |
-          cargo llvm-cov --all-features --locked \
-            --ignore-filename-regex '(src/main\.rs|src/testing\.rs)' \
+          cargo llvm-cov --workspace --locked \
+            --ignore-filename-regex '(main\.rs|testing/|integration-tests/)' \
             --lcov --output-path lcov.info \
             --fail-under-lines "$COVERAGE_MIN"
       - name: Coverage summary
@@ -80,7 +80,7 @@ jobs:
             echo '### Test coverage'
             echo '```'
             cargo llvm-cov report --summary-only \
-              --ignore-filename-regex '(src/main\.rs|src/testing\.rs)'
+              --ignore-filename-regex '(main\.rs|testing/|integration-tests/)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -97,10 +97,14 @@ jobs:
           fail_ci_if_error: false
 
   docker:
-    name: Docker build and smoke test
+    name: Container tests (PostgreSQL, ClickHouse, portal image)
     runs-on: ubuntu-latest
+    env:
+      SCRIPT_PORTAL_IMAGE: script-portal:test
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: docker/setup-buildx-action@v3
       - name: Build image
         uses: docker/build-push-action@v6
@@ -108,29 +112,28 @@ jobs:
           context: .
           load: true
           push: false
-          tags: script-portal:ci
+          tags: ${{ env.SCRIPT_PORTAL_IMAGE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test (health, readiness, metrics)
+      # Starts and removes its own containers (testcontainers).
+      - name: Container tests
+        run: cargo test --workspace --locked --features sql-portal-integration-tests/docker
+      # Docker honours HEALTHCHECK (Podman ignores it in OCI images), so check it here.
+      - name: Built-in HEALTHCHECK reports healthy
         run: |
-          docker run -d --name portal -p 8080:8080 script-portal:ci
-          for i in $(seq 1 30); do
-            curl -fsS http://localhost:8080/readyz && break
-            sleep 1
-          done
-          curl -fsS http://localhost:8080/healthz
-          curl -fsS http://localhost:8080/metrics | grep -q '^http_requests_total'
-          curl -fsS http://localhost:8080/ | grep -q 'Available scripts'
-          # The built-in HEALTHCHECK must report healthy.
+          docker run -d --name portal "$SCRIPT_PORTAL_IMAGE"
           for i in $(seq 1 20); do
             status=$(docker inspect --format '{{.State.Health.Status}}' portal)
             [ "$status" = "healthy" ] && break
             sleep 2
           done
+          docker rm -f portal
           test "$status" = "healthy"
-      - name: Container logs on failure
-        if: failure()
-        run: docker logs portal
+      - name: Leftover test containers
+        if: always()
+        run: |
+          left=$(docker ps -aq --filter label=org.sql-portal.integration-test=true)
+          [ -z "$left" ] || { docker ps -a --filter label=org.sql-portal.integration-test=true; exit 1; }
 
   audit:
     name: Dependency audit

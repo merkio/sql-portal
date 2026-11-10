@@ -1,76 +1,28 @@
 [workspace]
+resolver = "2"
 members = [
-    "crates/sql-dialect",
-    "crates/dialect-sqlite",
-    "crates/dialect-postgres",
-    "crates/dialect-clickhouse",
+    # Common utilities
+    "common/template-render",
+    "common/config-loader",
+    
+    # Datasources
+    "datasources/sql-executor",
+    "datasources/sqlite",
+    "datasources/postgres",
+    "datasources/clickhouse",
+    
+    # SQL Portal application
+    "sql-portal/domain",
+    "sql-portal/application",
+    "sql-portal/adapters",
+    "sql-portal/ui",
+    "sql-portal/deployment",
+    "sql-portal/testing",
+    "sql-portal/integration-tests",
 ]
 
-[package]
-name = "script-portal"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.89"
-description = "Config-driven SQL script portal with LDAP/OIDC authorization, forms, charts, health checks and Prometheus metrics"
-license = "MIT"
-readme = "README.md"
-publish = false
+[workspace.lints.rust]
+unsafe_code = "forbid"
 
-[lib]
-name = "script_portal"
-path = "src/lib.rs"
-
-[[bin]]
-name = "script-portal"
-path = "src/main.rs"
-
-[features]
-# Exposes in-memory fakes (src/testing.rs) to integration tests.
-test-support = []
-
-[dependencies]
-anyhow = "1"
-async-trait = "0.1"
-axum = "0.8"
-base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["std"] }
-clap = { version = "4", features = ["derive", "env"] }
-futures-util = "0.3"
-ldap3 = { version = "0.12", default-features = false, features = ["tls-rustls-ring"] }
-metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.17", default-features = false }
-openidconnect = "4.1"
-minijinja = "2"
-sql-dialect = { path = "crates/sql-dialect" }
-dialect-sqlite = { path = "crates/dialect-sqlite" }
-dialect-postgres = { path = "crates/dialect-postgres" }
-dialect-clickhouse = { path = "crates/dialect-clickhouse" }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-percent-encoding = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-regex = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_yaml_ng = "0.10"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any", "sqlite", "postgres"] }
-thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync", "io-util"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "request-id", "set-header"] }
-tower-sessions = "0.14"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-url = "2"
-uuid = { version = "1", features = ["v4"] }
-
-[dev-dependencies]
-http-body-util = "0.1"
-script-portal = { path = ".", features = ["test-support"] }
-tower = { version = "0.5", features = ["util"] }
-testcontainers = { version = "0.15", features = ["tokio"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "any", "sqlite", "postgres"] }
-
-[profile.release]
-lto = "thin"
-codegen-units = 4
-strip = true
+[workspace.lints.clippy]
+all = "warn"

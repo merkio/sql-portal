@@ -1,100 +1,122 @@
 # Architecture
 
-Script Portal follows **clean architecture** with **DDD** building blocks. Source dependencies point inwards only.
+Script Portal follows **clean architecture** with **DDD** building blocks. The target picture is
+[`ScriptPortal.png`](ScriptPortal.png). Layers are separate crates, so a dependency that breaks a layer
+rule must first be added to a `Cargo.toml`, and `sql-portal/integration-tests/tests/architecture.rs` rejects it.
+
+## Crates
 
 ```
-        ┌──────────────────────────────────────────────────────┐
-        │ presentation   axum routes, extractors, HTML views    │
-        │ infrastructure config, sqlx, ldap3, openidconnect,    │
-        │                metrics/tracing adapters                │
-        │ bootstrap      composition root: wire() + router()    │
-        └──────────────┬───────────────────────────────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │ application   use cases       │  AuthService, ScriptService, HealthService
-        └──────────────┬───────────────┘
-                       ▼
-        ┌──────────────────────────────┐
-        │ domain        model + ports   │  no web / DB / LDAP / OIDC dependencies
-        └──────────────────────────────┘
+common/                       datasources/                   sql-portal/
+  config-loader   (empty)       sql-executor  ◄──┐             domain ──────────► sql-executor
+  template-render (empty)       sqlite-dialect ──┤             application ─────► domain
+                                postgres-dialect ┤             adapters ────────► domain, sql-executor, *-dialect
+                                clickhouse-dialect┘            ui ──────────────► application, domain
+                                                               deployment ──────► all of the above
+                                                               testing (dev) ───► domain
+                                                               integration-tests ► everything (tests only)
 ```
 
-## Layers
-
-### `domain/`
-Split into bounded contexts. A context only depends on the ones above it in this table (see `domain/mod.rs`):
-
-| Context | Concepts (DDD role) | Where |
+| crate | role | may depend on (workspace crates) |
 |---|---|---|
-| `shared` | Common kernel: `Value` (value object), `DomainError` | `shared/` |
-| `access` | `Permission`, `PermissionSet`: value objects with wildcard matching | `access/` |
-| `identity` | `User` (asserted by a provider), `Principal` (user + resolved permissions), `AccessPolicy` (domain service: users/groups → roles → permissions), `AuthError` | `identity/` |
-| `query` | `QueryRequest`, `QueryResult`, `QueryError` | `query/` |
-| `scripts` | `ScriptDefinition` (aggregate; invariants enforced in `validate()`), `ParamDefinition`, `ChartDefinition`, `sql_template` (`:name` placeholders, read-only check), `ScriptError`, `FieldError` | `scripts/` |
-| `ports` | One file per seam: `CredentialAuthenticator` and `OidcProvider` (`auth`), `QueryExecutor` (`query`), `ScriptCatalog` (`catalog`), `ScriptAccessRule` (`script_access`), `HealthProbe` (`health`), `Telemetry` (`telemetry`) | `ports/` |
+| `sql-portal-domain` | model and ports; no web, database or identity-provider crates | `sql-executor` (placeholder scanning) |
+| `sql-portal-application` | use cases | `domain` |
+| `sql-portal-adapters` | port implementations | `domain`, the datasource crates |
+| `sql-portal-ui` | axum routes, views, extractors, middleware | `domain`, `application` |
+| `sql-portal` (deployment) | composition root + `script-portal` binary | all layers |
+| `sql-portal-testing` | in-memory fakes of the ports | `domain`; only as a dev-dependency |
+| `sql-portal-integration-tests` | integration and end-to-end tests | everything |
+| `sql-executor` | dialect contract (`Dialect`, `Cell`, `Statement`), no I/O | — |
+| `sqlite-` / `postgres-` / `clickhouse-dialect` | one dialect each, no I/O | `sql-executor` |
+| `config-loader`, `template-render` | shared libraries (not extracted yet) | — |
 
-Callers keep using the flat names (`domain::Principal`, `domain::ports::QueryExecutor`).
+## Domain (`sql-portal/domain`)
 
-### `application/`
-Use cases orchestrate domain objects through ports, with no knowledge of HTTP or SQL drivers.
-- `AuthService`: master `enabled` switch, LDAP login, OIDC begin/complete (state check), principal resolution.
-- `ScriptService`: list/view/run with permission checks, parameter binding, chart preparation, telemetry.
+Bounded contexts, one folder each. Ports live in the context they belong to and are re-exported at the
+crate root (`sql_portal_domain::QueryExecutor`).
 
-### `infrastructure/`
-Adapters implementing ports, organized by concern:
-- `health/`: `HealthService` (aggregates `HealthProbe`), `DatabaseProbe`, `OidcProbe`
-- `sql/`: `SqlExecutor` (sqlx `Any`), database connections, migrations
-- `config/`: YAML config loading, mapping, runtime configuration
-- `auth/`: `LdapAuthenticator` (ldap3), `OidcAdapter` (openidconnect), `GithubAdapter`
-- `catalog/`: `ConfigScriptCatalog`
-- `grants/`: `RemoteGrants`, `CachedGrants`, `LocalGrants`
-- `observability/`: `MetricsTelemetry` (metrics + Prometheus), tracing
+| context | concepts | ports |
+|---|---|---|
+| `common` | `Value`, `DomainError` | — |
+| `access` | `Permission`, `PermissionSet`, `User`, `Principal`, `AccessPolicy`, `LocalGrants` | `CredentialAuthenticator`, `OidcProvider`, `GithubLogin`, `GrantSource`, `ScriptAccessRule` |
+| `query` | `QueryRequest`, `QueryResult`, `QueryError`, paging | `QueryExecutor` |
+| `scripts` | `ScriptDefinition` (aggregate), `ParamDefinition`, `ChartDefinition`, `sql_template`, `ConfigScriptCatalog` (in-memory catalog) | `ScriptCatalog` |
+| `health` | — | `HealthProbe` |
+| `telemetry` | `NoopTelemetry` | `Telemetry` |
 
-### `presentation/`
-axum router, extractors (`WebPrincipal` redirects to `/login`, `ApiPrincipal` answers 401), handlers, HTML views with
-escaping, middleware (route-template metrics, security headers).
+## Application (`sql-portal/application`)
 
-### `bootstrap.rs`
-The only place that knows concrete adapters. Builds services from configuration and returns the router.
+| module | use case |
+|---|---|
+| `auth` | `AuthService`: the master `enabled` switch, LDAP login, OIDC/GitHub flows (state check), principal resolution |
+| `scripts` | `ScriptService`: list / view / run with permission checks, parameter binding, charts, telemetry |
+| `health` | `HealthService`: liveness, and readiness from the registered `HealthProbe`s |
 
-## SOLID in practice
+## Adapters (`sql-portal/adapters`)
 
-- **S**ingle responsibility: parameter parsing (`ParamDefinition`), placeholder scanning (`sql_template`), placeholder rewriting (`named_params`),
-  chart extraction (`ChartDefinition::build`) and HTML rendering (`views`) are separate, individually tested units.
-- **O**pen/closed: new databases, directories or identity providers are new adapters; use cases do not change.
-- **L**iskov: every port has an in-memory fake (`src/testing.rs`) that is substitutable for the real adapter in tests.
-- **I**nterface segregation: small ports (`HealthProbe` has three methods; `Telemetry` two).
-- **D**ependency inversion: application code depends on traits in `domain::ports`; `bootstrap` injects implementations.
+| module | implements |
+|---|---|
+| `sql` | `QueryExecutor` for SQLite/PostgreSQL (sqlx) and ClickHouse (HTTP); `connect_database` picks one by URL scheme; migrations |
+| `auth` | `LdapAuthenticator`, `OidcAdapter`, `GithubAdapter` |
+| `grants` | `RemoteGrants` (HTTP grants service) and `CachedGrants` (TTL cache) |
+| `health` | `DatabaseProbe`, `OidcProbe` |
+| `config` | YAML loading, validation, mapping to `RuntimeConfig` |
+| `telemetry` | `MetricsTelemetry` (Prometheus), tracing setup |
+| `tls` | rustls/reqwest TLS options shared by every outbound connection |
 
-## TDD approach
+## Deployment (`sql-portal/deployment`)
 
-Tests live next to the code they specify and drive each layer from the inside out:
+The only crate that knows concrete adapters. Each module configures one part of the application from the
+`RuntimeConfig` and returns fully wired services:
 
-1. **Domain unit tests** (pure, microsecond): permissions, policy resolution, parameter parsing, placeholder scanning, charts, script invariants.
-2. **Application tests** with fakes: login/state checks, permission filtering, bounded metric labels, error classification, readiness semantics.
-3. **Adapter tests**: SQL against in-memory SQLite (types, truncation, injection attempts), config loading/validation, LDAP filter escaping and entry mapping, OIDC claim mapping.
-4. **HTTP integration tests** (`tests/`): the real router with fake LDAP/OIDC and seeded SQLite — login, CSRF, session rotation, roles via groups, forms, API, health, metrics, headers.
-5. **Composition-root tests** (`tests/bootstrap.rs`): the shipped configs build a working app; bad configs fail fast.
+| module | builds from config |
+|---|---|
+| `database` | the `QueryExecutor`, with migrations and init files applied |
+| `access` | the `GrantSource` (local policy or external service) |
+| `auth` | the `AuthService` and its providers |
+| `scripts` | the `ScriptService` with catalog and access rule |
+| `health` | the `HealthService` with database and OIDC probes |
+| `observability` | tracing, the Prometheus recorder, the `Telemetry` port |
+| `http` | the axum router |
 
-Add a feature by writing the failing test at the lowest sensible layer, then the code, then an HTTP test if it changes behaviour.
+`lib.rs` assembles them in `wire()`; `build_app_with(…, Overrides)` lets tests (or another crate) replace
+single adapters. `main.rs` is the CLI only: `serve`, `check-config`, `healthcheck`.
 
 ## Request flow (script page)
 
 ```
 GET /scripts/x?_run=1&p=v
-  → WebPrincipal extractor: session → User → AuthService.principal (policy.resolve) | redirect /login
+  → WebPrincipal extractor: session → User → AuthService.principal (GrantSource) | redirect /login
   → ScriptService.view: catalog lookup, permission check (404 / 403)
-  → normalise checkboxes, ScriptService.run:
-        bind_params (validation → 422)  →  QueryExecutor.execute (timeout, max_rows)  →  charts
-  → views::script_body (escaped HTML; chart specs as JSON blocks)  →  security headers  →  metrics middleware
+  → ScriptService.run: bind_params (validation → 422) → QueryExecutor.execute (timeout, max_rows) → charts
+  → views (escaped HTML; chart specs as JSON) → security headers → metrics middleware
 ```
+
+## Tests
+
+Tests are written at the lowest layer that can express the behaviour:
+
+1. **Domain unit tests**: pure, in each context.
+2. **Application unit tests**: use cases over the fakes in `sql-portal-testing`.
+3. **Adapter unit tests**: SQL against in-memory SQLite, config mapping, LDAP escaping, OIDC claims.
+4. **In-process integration tests** (`integration-tests/tests/*.rs`): the real router from the demo config,
+   with fake identity providers. No Docker.
+5. **Architecture tests** (`architecture.rs`): the crate dependency rules above.
+6. **Container tests** (`--features docker`), with testcontainers:
+   - `postgres.rs`, `clickhouse.rs`: the adapters against real servers. One container per test binary,
+     shared through a lease and removed when the last test releases it. ClickHouse tests get a database each.
+   - `portal_image.rs`: the shipped image, one container per test. Checks HTTP endpoints, metrics, security
+     headers, the built-in `healthcheck` and `check-config` commands, a startup failure on invalid config,
+     and the image talking to PostgreSQL over a Docker network.
+
+   Containers are removed when their owner is dropped, also when a test panics. The details are in
+   `integration-tests/src/containers.rs`.
 
 ## Extension points
 
-- **Another database**: write a `dialect-<name>` crate implementing `sql_dialect::Dialect` (placeholder
-  rewriting, parameter binding, result parsing, no I/O), then a `QueryExecutor` adapter in
-  `infrastructure/sql/` that does the I/O and selects the URL scheme in `connect_database`. The ClickHouse
-  and PostgreSQL crates are worked examples.
-- **Persistent sessions**: replace `MemoryStore` in `presentation/router.rs` with a `tower-sessions` store (sqlx, Redis…).
-- **More auth providers** (e.g. SAML, static tokens): implement a port next to `CredentialAuthenticator`/`OidcProvider` and add it to `AuthService`.
-- **More chart kinds / form widgets**: extend `ChartKind`/`ParamKind` in the domain, then the config mapping and `views`.
+- **Another database**: a dialect crate in `datasources/` implementing `sql_executor::Dialect`, plus a
+  `QueryExecutor` adapter in `adapters/src/sql/` selected in `connect_database`. Add a container test.
+- **Another identity provider**: a port next to `CredentialAuthenticator`/`OidcProvider` in `domain/access`,
+  an adapter in `adapters/src/auth/`, wiring in `deployment/src/auth/`.
+- **Persistent sessions**: replace `MemoryStore` in `ui/src/router.rs` with a `tower-sessions` store.
+- **More chart kinds / form widgets**: extend `ChartKind`/`ParamKind` in the domain, then config mapping and views.
