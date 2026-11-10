@@ -9,8 +9,8 @@ use sql_portal_domain::{
     AuthError, AuthProvider, QueryError, QueryRequest, QueryResult, ScriptDefinition, User,
 };
 use sql_portal_domain::{
-    CredentialAuthenticator, HealthProbe, OidcAuthorization, OidcPending, OidcProvider,
-    QueryExecutor, ScriptCatalog, Telemetry,
+    CredentialAuthenticator, OidcAuthorization, OidcPending, OidcProvider, QueryExecutor,
+    ScriptCatalog, Telemetry,
 };
 
 /// LDAP fake accepting exactly one username/password pair.
@@ -161,55 +161,6 @@ impl ScriptCatalog for InMemoryCatalog {
             .iter()
             .find(|s| s.name.as_str() == name)
             .cloned()
-    }
-}
-
-pub struct FakeProbe {
-    name: &'static str,
-    ok: bool,
-    critical: bool,
-    slow: bool,
-}
-
-impl FakeProbe {
-    pub fn new(name: &'static str, ok: bool, critical: bool) -> Self {
-        Self {
-            name,
-            ok,
-            critical,
-            slow: false,
-        }
-    }
-
-    pub fn slow(name: &'static str) -> Self {
-        Self {
-            name,
-            ok: true,
-            critical: true,
-            slow: true,
-        }
-    }
-}
-
-#[async_trait]
-impl HealthProbe for FakeProbe {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
-    fn critical(&self) -> bool {
-        self.critical
-    }
-
-    async fn check(&self) -> Result<(), String> {
-        if self.slow {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-        if self.ok {
-            Ok(())
-        } else {
-            Err("probe failed".into())
-        }
     }
 }
 

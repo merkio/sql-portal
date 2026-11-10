@@ -1,21 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sql_portal_domain::health::HealthProbe;
+use async_trait::async_trait;
+use sql_portal_ui::{CheckResult, Readiness, ReadinessReport};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckResult {
-    pub name: &'static str,
-    pub ok: bool,
-    pub critical: bool,
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReadinessReport {
-    pub ready: bool,
-    pub checks: Vec<CheckResult>,
-}
+use super::HealthProbe;
 
 /// Liveness is trivial (the process answers); readiness aggregates probes.
 pub struct HealthService {
@@ -58,10 +47,65 @@ impl HealthService {
     }
 }
 
+#[async_trait]
+impl Readiness for HealthService {
+    async fn readiness(&self) -> ReadinessReport {
+        HealthService::readiness(self).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sql_portal_testing::FakeProbe;
+
+    struct FakeProbe {
+        name: &'static str,
+        ok: bool,
+        critical: bool,
+        slow: bool,
+    }
+
+    impl FakeProbe {
+        fn new(name: &'static str, ok: bool, critical: bool) -> Self {
+            Self {
+                name,
+                ok,
+                critical,
+                slow: false,
+            }
+        }
+
+        fn slow(name: &'static str) -> Self {
+            Self {
+                name,
+                ok: true,
+                critical: true,
+                slow: true,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl HealthProbe for FakeProbe {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn critical(&self) -> bool {
+            self.critical
+        }
+
+        async fn check(&self) -> Result<(), String> {
+            if self.slow {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+            if self.ok {
+                Ok(())
+            } else {
+                Err("probe failed".into())
+            }
+        }
+    }
 
     #[tokio::test]
     async fn ready_when_all_probes_pass() {

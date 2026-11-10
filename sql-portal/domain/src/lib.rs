@@ -5,7 +5,6 @@
 
 pub mod access;
 pub mod common;
-pub mod health;
 pub mod query;
 pub mod scripts;
 pub mod telemetry;
@@ -21,7 +20,6 @@ pub use common::{DomainError, Value};
 pub use access::{
     CredentialAuthenticator, GithubLogin, GrantSource, OidcAuthorization, OidcPending, OidcProvider,
 };
-pub use health::HealthProbe;
 pub use query::{PageInfo, PageRequest, QueryError, QueryExecutor, QueryRequest, QueryResult};
 pub use scripts::{
     ChartData, ChartDefinition, ChartKind, Dataset, DatasetData, FieldError, ParamDefinition,

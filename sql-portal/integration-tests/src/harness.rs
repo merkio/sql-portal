@@ -5,18 +5,20 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{header, Request, Response, StatusCode};
 use axum::Router;
 use http_body_util::BodyExt;
+use sql_portal::health::HealthProbe;
 use sql_portal::{http::router, wire, Overrides};
 use sql_portal_adapters::config::load_from_path;
 use sql_portal_adapters::sql::SqlExecutor;
 use sql_portal_application::{AuthMode, LocalGrants, Providers};
 use sql_portal_domain::telemetry::NoopTelemetry;
 use sql_portal_domain::{AuthProvider, User};
-use sql_portal_domain::{GithubLogin, HealthProbe, QueryExecutor};
-use sql_portal_testing::{FakeGithub, FakeLdap, FakeOidc, FakeProbe};
+use sql_portal_domain::{GithubLogin, QueryExecutor};
+use sql_portal_testing::{FakeGithub, FakeLdap, FakeOidc};
 use tower::ServiceExt;
 
 pub struct Harness {
@@ -187,10 +189,37 @@ impl Harness {
     }
 }
 
+/// A probe that always fails.
+struct FailingProbe {
+    name: &'static str,
+    critical: bool,
+}
+
+#[async_trait]
+impl HealthProbe for FailingProbe {
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn critical(&self) -> bool {
+        self.critical
+    }
+
+    async fn check(&self) -> Result<(), String> {
+        Err("probe failed".into())
+    }
+}
+
 pub fn failing_probe() -> Arc<dyn HealthProbe> {
-    Arc::new(FakeProbe::new("broken", false, true))
+    Arc::new(FailingProbe {
+        name: "broken",
+        critical: true,
+    })
 }
 
 pub fn failing_noncritical_probe() -> Arc<dyn HealthProbe> {
-    Arc::new(FakeProbe::new("flaky", false, false))
+    Arc::new(FailingProbe {
+        name: "flaky",
+        critical: false,
+    })
 }

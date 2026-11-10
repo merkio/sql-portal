@@ -1,10 +1,28 @@
-//! Health checks → the `HealthService` behind `/healthz` and `/readyz`.
+//! Health checks: the probes, the `HealthService` that aggregates them, and
+//! its wiring. `/healthz` and `/readyz` are served through the
+//! [`Readiness`](sql_portal_ui::Readiness) port.
+
+mod probes;
+mod service;
 
 use std::sync::Arc;
 
-use sql_portal_adapters::health::{DatabaseProbe, OidcProbe};
-use sql_portal_application::HealthService;
-use sql_portal_domain::{HealthProbe, OidcProvider, QueryExecutor};
+use async_trait::async_trait;
+use sql_portal_domain::{OidcProvider, QueryExecutor};
+
+pub use probes::{DatabaseProbe, OidcProbe};
+pub use service::HealthService;
+
+/// A dependency health check used by the readiness endpoint.
+#[async_trait]
+pub trait HealthProbe: Send + Sync {
+    fn name(&self) -> &'static str;
+    /// A failing critical probe makes the service "not ready".
+    fn critical(&self) -> bool {
+        true
+    }
+    async fn check(&self) -> Result<(), String>;
+}
 
 /// Database probe first, then OIDC discovery (when enabled), then any extras.
 pub fn service(

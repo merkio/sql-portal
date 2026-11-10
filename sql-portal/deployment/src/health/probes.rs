@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use sql_portal_domain::health::HealthProbe;
 use sql_portal_domain::{OidcProvider, QueryExecutor};
+
+use super::HealthProbe;
 
 /// Critical probe: can we run `SELECT 1`?
 pub struct DatabaseProbe {
@@ -60,7 +61,6 @@ impl HealthProbe for OidcProbe {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sql_portal_domain::QueryError;
     use sql_portal_testing::{FakeExecutor, FakeOidc};
 
     #[tokio::test]
@@ -69,7 +69,6 @@ mod tests {
         assert!(ok.check().await.is_ok());
         assert!(ok.critical());
         assert_eq!(ok.name(), "database");
-        let _ = QueryError::Timeout; // referenced for completeness
     }
 
     #[tokio::test]

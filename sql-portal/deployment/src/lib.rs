@@ -19,9 +19,12 @@ use std::sync::Arc;
 
 use axum::Router;
 use sql_portal_adapters::config::RuntimeConfig;
-use sql_portal_application::{AuthMode, AuthService, HealthService, ScriptService};
-use sql_portal_domain::{GrantSource, HealthProbe, QueryExecutor, ScriptAccessRule, Telemetry};
+use sql_portal_application::{AuthMode, AuthService, ScriptService};
+use sql_portal_domain::{GrantSource, QueryExecutor, ScriptAccessRule, Telemetry};
+pub use sql_portal_ui::MetricsRender;
 use sql_portal_ui::{RouterSettings, UiSettings};
+
+use crate::health::{HealthProbe, HealthService};
 
 pub mod access;
 pub mod auth;
@@ -30,9 +33,6 @@ pub mod health;
 pub mod http;
 pub mod observability;
 pub mod scripts;
-
-/// Renders the Prometheus exposition text for `/metrics`.
-pub type MetricsRender = Arc<dyn Fn() -> String + Send + Sync>;
 
 /// Adapters a caller may replace. Anything left `None` is built from the
 /// configuration.

@@ -4,5 +4,4 @@
 pub mod auth;
 pub mod config;
 pub mod grants;
-pub mod health;
 pub mod sql;

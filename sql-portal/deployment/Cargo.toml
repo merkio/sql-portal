@@ -23,6 +23,7 @@ sql-portal-ui = { path = "../ui" }
 prometheus-metrics = { path = "../../common/prometheus" }
 metrics = "0.24"
 anyhow = "1"
+async-trait = "0.1"
 axum = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "time", "sync", "io-util"] }
@@ -30,3 +31,6 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = "0.5"
 serde_yaml_ng = "0.10"
+
+[dev-dependencies]
+sql-portal-testing = { path = "../testing" }

@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
-use sql_portal_application::HealthService;
 use sql_portal_application::{AuthService, ScriptService};
+
+use crate::readiness::Readiness;
+
+/// Renders the Prometheus exposition text served at the metrics path.
+pub type MetricsRender = Arc<dyn Fn() -> String + Send + Sync>;
 
 #[derive(Debug, Clone)]
 pub struct UiSettings {
@@ -14,9 +18,8 @@ pub struct UiSettings {
 pub struct AppState {
     pub auth: Arc<AuthService>,
     pub scripts: Arc<ScriptService>,
-    pub health: Arc<HealthService>,
-    /// Renders the Prometheus exposition text.
-    pub metrics: Arc<dyn Fn() -> String + Send + Sync>,
+    pub health: Arc<dyn Readiness>,
+    pub metrics: MetricsRender,
     pub ui: Arc<UiSettings>,
 }
 
